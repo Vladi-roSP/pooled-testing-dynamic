@@ -1,0 +1,644 @@
+\documentclass[11pt, a4paper]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{listings}
+
+\geometry{margin=1in}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  language=Python,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
+
+\title{Hallazgos en la Implementaci\'on --- Fase~2:\\
+\textbf{Gibbs Sampling, Semi-Utilidad, Verificaci\'on\\Cruzada y Herramientas de An\'alisis}\\[0.5em]
+\large Nuevas Implementaciones del DAPTS Framework}
+
+\author{Reporte T\'ecnico}
+\date{Marzo 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este documento presenta los hallazgos de la segunda fase de desarrollo del
+framework \textit{Dynamic Augmented Pooled Testing Strategies} (DAPTS).
+Se cubren cinco implementaciones nuevas: (1)~el m\'etodo de Gibbs Sampling
+para aproximar posteriores marginales escalable a $n \sim 50+$,
+(2)~variantes greedy basadas en Gibbs Sampling, (3)~el m\'odulo de
+semi-utilidad con par\'ametro $\alpha$ de interpolaci\'on, (4)~el framework
+de verificaci\'on cruzada con el c\'odigo externo de Nick, y (5)~las
+herramientas de poda y resumen de \'arboles de decisi\'on. Se documenta
+la justificaci\'on matem\'atica, los detalles de implementaci\'on y los
+resultados experimentales de cada componente.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ==================================================================
+\section{Introducci\'on}
+
+La primera fase del framework DAPTS (documentada en
+\texttt{findings\_report.tex}, Hallazgos 1--6) estableci\'o los
+componentes fundamentales: preprocesamiento, actualizaci\'on bayesiana
+por conteo, extracci\'on de \'arboles de decisi\'on, variantes greedy, y
+exploraci\'on de instancias aleatorias.
+
+Esta segunda fase aborda las limitaciones identificadas en el ``Trabajo
+Futuro'' de la primera fase:
+\begin{enumerate}[nosep]
+    \item \textbf{Escalabilidad:} El conteo exacto ($O(2^n)$) no escala
+    m\'as all\'a de $n = 14$. Se necesita una aproximaci\'on eficiente.
+    \item \textbf{Modelo de utilidad:} El modelo binario (solo individuos
+    \textit{cleared} contribuyen) es restrictivo. Se necesita un modelo
+    continuo.
+    \item \textbf{Verificaci\'on:} Comparar nuestros resultados con
+    implementaciones externas independientes.
+    \item \textbf{Visualizaci\'on a escala:} Los \'arboles de decisi\'on
+    para $n > 5$ son inmanejables sin herramientas de poda.
+\end{enumerate}
+
+% ==================================================================
+\section{Hallazgo 1: Gibbs Sampling para Posteriores Marginales}
+\label{sec:gibbs}
+
+\subsection{Motivaci\'on}
+La actualizaci\'on bayesiana por conteo (funci\'on
+\texttt{bayesian\_update\_by\_counting}) computa las posteriores exactas
+enumerando los $2^n$ perfiles de infecci\'on. Para $n = 14$ esto implica
+$2^{14} = 16{,}384$ evaluaciones; para $n = 20$ ser\'ian $2^{20} > 10^6$;
+y para $n = 50$ es completamente intractable ($2^{50} \approx 10^{15}$).
+
+Se implement\'o Gibbs Sampling siguiendo el Appendix~A.2 de Lopez et al.,
+adaptado al contexto de tests aumentados donde cada test devuelve el
+conteo exacto $r = |t \cap Z|$.
+
+\subsection{Algoritmo}
+La implementaci\'on en \texttt{bayesian.py:gibbs\_update()} consta de
+cuatro fases:
+
+\subsubsection{Fase 1: Preprocesamiento Determin\'istico}
+Antes del muestreo, se realizan deducciones l\'ogicas por propagaci\'on
+de restricciones:
+\begin{itemize}[nosep]
+    \item Si $r_j = 0$: todos los miembros del pool $t_j$ son sanos.
+    \item Si $r_j = |t_j|$: todos los miembros del pool $t_j$ est\'an
+    infectados.
+    \item \textbf{Propagaci\'on:} Al confirmar el estado de un individuo,
+    se actualizan las restricciones de los tests que lo contienen y se
+    itera hasta convergencia. Esto permite deducir estados en cadena.
+\end{itemize}
+
+\begin{remark}
+La propagaci\'on de restricciones reduce significativamente el espacio
+de muestreo. En muchos casos pr\'acticos, especialmente con tasas de
+infecci\'on bajas, la mayor\'ia de los individuos son determinados en
+esta fase sin necesidad de muestreo.
+\end{remark}
+
+\subsubsection{Fase 2: Inicializaci\'on Consistente}
+Se construye un estado inicial $z^{(0)}$ que satisface todas las
+restricciones de los tests:
+\begin{enumerate}[nosep]
+    \item Inicializar todos los agentes activos como sanos ($z_i = 0$).
+    \item Para cada test $(t_j, r_j)$, si la cuenta actual de infectados
+    en $t_j$ es menor que $r_j$, infectar los agentes con mayor
+    probabilidad prior hasta alcanzar $r_j$.
+\end{enumerate}
+
+Esta heur\'istica greedy proporciona un punto de partida v\'alido para
+la cadena de Markov en la mayor\'ia de los casos.
+
+\subsubsection{Fase 3: Iteraciones de Gibbs con Swap Moves}
+Cada iteraci\'on combina dos mecanismos:
+
+\paragraph{Gibbs Sweep Est\'andar:}
+Para cada agente $i$ en orden aleatorio:
+\begin{enumerate}[nosep]
+    \item Computar si $z_i = 1$ (infectado) es consistente con todos los
+    tests que involucran a~$i$.
+    \item Computar si $z_i = 0$ (sano) es consistente.
+    \item Si ambos son consistentes: muestrear seg\'un la prior
+    $P(z_i = 1) = p_i$.
+    \item Si solo uno es consistente: fijar ese valor.
+    \item Si ninguno es consistente: mantener el valor actual.
+\end{enumerate}
+
+\paragraph{Swap Moves (Metropolis-Hastings):}
+Las restricciones de conteo exacto ($|t_j \cap z| = r_j$) pueden
+atrapar la cadena en estados locales donde ning\'un agente individual
+puede cambiar su estado sin violar una restricci\'on. Los \textit{swap
+moves} resuelven esto:
+\begin{enumerate}[nosep]
+    \item Para cada test con $0 < r_j < |t_j|$, seleccionar un infectado
+    $i_{\text{inf}}$ y un sano $i_{\text{hlt}}$ del pool.
+    \item Intercambiar sus estados: $z_{i_\text{inf}} \leftarrow 0$,
+    $z_{i_\text{hlt}} \leftarrow 1$.
+    \item Verificar consistencia con \textbf{todos} los tests que
+    involucran a cualquiera de los dos agentes.
+    \item Si es v\'alido, aceptar con probabilidad de Metropolis-Hastings:
+    \begin{equation}
+        \alpha = \min\left(1, \frac{p_{i_\text{hlt}} \cdot (1 - p_{i_\text{inf}})}{
+        p_{i_\text{inf}} \cdot (1 - p_{i_\text{hlt}})}\right)
+    \end{equation}
+    \item Si no es v\'alido o se rechaza, revertir el swap.
+\end{enumerate}
+
+\begin{proposition}
+Los swap moves garantizan la ergodicidad de la cadena de Markov cuando
+las restricciones de conteo exacto crean componentes desconectados en el
+espacio de estados bajo movimientos de Gibbs individuales.
+\end{proposition}
+
+\subsubsection{Fase 4: Estimaci\'on de Marginales}
+Despu\'es del per\'iodo de \textit{burn-in} (por defecto 200 iteraciones),
+las marginales se estiman como frecuencias emp\'iricas:
+\begin{equation}
+    \hat{P}(Z_i = 1 \mid h_k) = 1 - \frac{1}{T} \sum_{t=1}^{T}
+    \mathbf{1}[z_i^{(t)} = 0]
+\end{equation}
+
+\paragraph{Convergencia:} Se monitorea con una ventana deslizante de
+tama\~no 50 (configurable). Si el cambio m\'aximo en las marginales entre
+ventanas consecutivas es menor que $\epsilon = 10^{-4}$, la cadena se
+detiene anticipadamente.
+
+\subsection{Complejidad Computacional}
+\begin{table}[htbp]
+\centering
+\caption{Comparaci\'on de complejidad de los m\'etodos de posterior.}
+\begin{tabular}{lcc}
+\toprule
+\textbf{M\'etodo} & \textbf{Complejidad} & \textbf{L\'imite pr\'actico de $n$} \\
+\midrule
+Secuencial (Poisson-Binomial) & $O(n \cdot |h_k|)$ & Ilimitado \\
+Conteo exacto & $O(2^n \cdot |h_k|)$ & $n \leq 14$ \\
+Gibbs Sampling & $O(n \cdot |h_k| \cdot T)$ & $n \sim 50+$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Validaci\'on}
+Para instancias peque\~nas ($n \leq 8$), se verific\'o que el Gibbs Sampling
+converge a los valores exactos del conteo. Los 62 tests unitarios pasan,
+incluyendo pruebas espec\'ificas de convergencia Gibbs vs.\ conteo con
+tolerancia $< 0.05$.
+
+% ==================================================================
+\section{Hallazgo 2: Variantes Greedy Basadas en Gibbs}
+
+\subsection{Implementaci\'on}
+Se a\~nadieron dos funciones al m\'odulo \texttt{greedy.py}:
+
+\begin{enumerate}[nosep]
+    \item \texttt{greedy\_myopic\_gibbs\_simulate(p, u, B, G, z\_mask,
+    num\_iterations, burn\_in, seed)}:
+    Simulaci\'on del greedy miope sobre un perfil de infecci\'on fijo,
+    usando Gibbs Sampling para computar las posteriores en cada paso en
+    lugar del m\'etodo secuencial o de conteo.
+
+    \item \texttt{greedy\_myopic\_gibbs\_expected\_utility(p, u, B, G,
+    num\_iterations, burn\_in, seed)}:
+    Utilidad esperada del greedy miope con posteriores Gibbs,
+    recursando sobre todos los posibles resultados $r = 0, \ldots, |t|$
+    ponderados por su probabilidad (PMF Poisson-Binomial).
+\end{enumerate}
+
+\subsection{Diferencia con el Greedy Secuencial y por Conteo}
+\begin{itemize}[nosep]
+    \item \textbf{Greedy Secuencial:} Aplica actualizaci\'on
+    Poisson-Binomial test por test. R\'apido ($O(n)$ por test) pero
+    pierde informaci\'on cruzada.
+    \item \textbf{Greedy por Conteo:} Enumera $2^n$ mundos. Exacto
+    pero $O(2^n)$ por paso.
+    \item \textbf{Greedy con Gibbs:} Aproxima las posteriores v\'ia MCMC.
+    Complejidad $O(n \cdot T)$ por paso, donde $T$ es el n\'umero de
+    iteraciones.
+\end{itemize}
+
+\subsection{Resultados}
+Para instancias peque\~nas ($n \leq 8$), el greedy Gibbs produce utilidades
+esperadas pr\'acticamente id\'enticas al greedy por conteo, confirmando
+que el Gibbs es una buena aproximaci\'on. La principal ventaja se
+manifiesta para $n > 14$ donde el conteo no es factible.
+
+\begin{remark}
+La funci\'on \texttt{greedy\_myopic\_gibbs\_expected\_utility} usa un
+seed fijo para garantizar reproducibilidad dentro del \'arbol recursivo.
+Cada rama del \'arbol usa el mismo seed, lo cual introduce una
+dependencia pero hace los resultados deterministas y comparables.
+\end{remark}
+
+% ==================================================================
+\section{Hallazgo 3: M\'odulo de Semi-Utilidad}
+\label{sec:semi}
+
+\subsection{Motivaci\'on}
+En el modelo est\'andar, la utilidad es binaria:
+\begin{equation}
+    U_{\text{binary}} = \sum_{i \in \text{cleared}} u_i
+\end{equation}
+
+Un individuo con posterior $P(\text{healthy}_i \mid h_k) = 0.99$ no
+contribuye nada si no fue expl\'icitamente declarado \textit{cleared}.
+Esto desperdicia la informaci\'on parcial obtenida de los tests.
+
+\subsection{Definici\'on Matem\'atica}
+El m\'odulo \texttt{semi\_utility.py} introduce un par\'ametro de
+interpolaci\'on $\alpha \in [0, 1]$:
+
+\begin{equation}
+    U_{\text{semi}}(\alpha) = \sum_{i=1}^{n} u_i \left[
+        \alpha \cdot P(\text{healthy}_i \mid h_k) +
+        (1 - \alpha) \cdot \mathbf{1}_{\text{cleared}}(i)
+    \right]
+\end{equation}
+
+\begin{itemize}[nosep]
+    \item $\alpha = 0$: Modelo binario cl\'asico. Solo los individuos
+    \textit{cleared} contribuyen utilidad.
+    \item $\alpha = 1$: Modelo puro de posteriores. Cada individuo
+    contribuye $u_i \cdot (1 - p_i^{\text{post}})$.
+    \item $0 < \alpha < 1$: Combinaci\'on convexa. Valora tanto la
+    certeza de clearance como la informaci\'on parcial.
+\end{itemize}
+
+\subsection{Selecci\'on de Pool}
+La funci\'on \texttt{\_semi\_best\_pool} selecciona el pool que maximiza
+la esperanza de $U_{\text{semi}}(\alpha)$ sobre todos los posibles
+resultados del test:
+\begin{equation}
+    t^* = \arg\max_{t \in \mathcal{T}} \sum_{r=0}^{|t|}
+    P(r \mid \mathbf{p}) \cdot U_{\text{semi}}(\alpha \mid
+    \text{posterior despu\'es de } r)
+\end{equation}
+
+donde $P(r \mid \mathbf{p})$ es la PMF Poisson-Binomial evaluada en
+las probabilidades de infecci\'on de los miembros del pool.
+
+\subsection{Funciones Implementadas}
+
+\begin{enumerate}[nosep]
+    \item \texttt{semi\_utility(p\_posterior, u, cleared\_mask, n, alpha)}:
+    Computa $U_{\text{semi}}(\alpha)$ para un estado dado.
+
+    \item \texttt{greedy\_myopic\_semi\_simulate(p, u, B, G, z\_mask,
+    alpha, update\_method)}:
+    Simulaci\'on del greedy con scoring de semi-utilidad sobre un perfil
+    fijo. Soporta tres m\'etodos de actualizaci\'on bayesiana:
+    \texttt{'sequential'}, \texttt{'counting'}, y \texttt{'gibbs'}.
+
+    \item \texttt{greedy\_myopic\_semi\_expected\_utility(p, u, B, G,
+    alpha, update\_method)}:
+    Utilidad esperada (binaria est\'andar) del greedy con semi-utilidad.
+    \textbf{Nota importante:} la semi-utilidad solo se usa para la
+    \textit{selecci\'on} del pool; la utilidad \textit{reportada} es
+    siempre la binaria est\'andar para permitir comparaciones justas.
+\end{enumerate}
+
+\subsection{Compatibilidad con M\'etodos de Actualizaci\'on}
+El m\'odulo soporta los tres m\'etodos de actualizaci\'on bayesiana:
+\begin{itemize}[nosep]
+    \item \textbf{Sequential:} Actualizaci\'on r\'apida, para $n$ grande
+    o exploraci\'on r\'apida del espacio $\alpha$.
+    \item \textbf{Counting:} Exacta, para $n \leq 14$.
+    \item \textbf{Gibbs:} Aproximada, escalable a $n \sim 50+$.
+\end{itemize}
+
+Esto permite explorar el espacio de $\alpha$ con diferentes niveles de
+precisi\'on en las posteriores, seg\'un el tama\~no de la instancia.
+
+\subsection{Propiedades del Par\'ametro $\alpha$}
+
+\begin{proposition}
+Para $\alpha = 0$, el greedy de semi-utilidad coincide con el greedy
+est\'andar. Sin embargo, para $\alpha > 0$, el greedy puede seleccionar
+pools diferentes, priorizando aquellos que producen mayor reducci\'on
+de incertidumbre global en lugar de solo maximizar la probabilidad de
+clearance inmediata.
+\end{proposition}
+
+\begin{remark}
+La exploraci\'on del espacio $\alpha \in [0, 1]$ permite identificar si
+existe un punto \'optimo donde la estrategia h\'ibrida supera tanto al
+modelo puramente binario como al puramente probabilista. Esto es un
+\'area de investigaci\'on abierta.
+\end{remark}
+
+% ==================================================================
+\section{Hallazgo 4: Framework de Verificaci\'on Cruzada}
+\label{sec:crossver}
+
+\subsection{Motivaci\'on}
+Para validar la correctitud de nuestro solver DP y las heur\'isticas
+greedy, se dise\~n\'o un protocolo de verificaci\'on cruzada con el
+c\'odigo independiente de Nick Lopez
+(\texttt{github.com/nrlopez03/pooled-testing}).
+
+\subsection{Hallazgo Cr\'itico: Bug en el C\'odigo Externo}
+Durante la verificaci\'on cruzada, se descubri\'o un error sutil en la
+funci\'on \texttt{solveDynamic} del c\'odigo de Nick:
+
+\begin{itemize}[nosep]
+    \item La funci\'on \texttt{bayesTheorem} computa correctamente las
+    marginales posteriores $P(Z_i = 1 \mid h_k)$.
+    \item Sin embargo, \texttt{solveDynamic} usa el \textbf{producto
+    de marginales} para la probabilidad conjunta:
+    $P(\text{pool sano}) = \prod_{i \in t} (1 - p_i^{\text{post}})$.
+    \item Esto es incorrecto cuando las restricciones de pools positivos
+    inducen \textbf{dependencias condicionales} entre individuos.
+\end{itemize}
+
+\subsubsection{Ejemplo del Bug}
+Considere dos individuos $A$ y $B$ que pertenecen al mismo pool positivo
+con $r = 1$. Saber que exactamente uno est\'a infectado crea una
+anti-correlaci\'on: $P(A \text{ infectado} \mid B \text{ infectado}) <
+P(A \text{ infectado})$. El producto de marginales ignora esta correlaci\'on.
+
+\subsubsection{Impacto Cuantitativo}
+\begin{itemize}[nosep]
+    \item Para $B \leq 2$: cero errores en todas las instancias probadas.
+    El bug no se manifiesta porque con un solo test previo las marginales
+    son suficientes.
+    \item Para $n=5$, $B=3$, $G=3$: error de $\sim 0.37\%$ (16.7407 vs.\
+    16.8023 exacto).
+    \item El mecanismo de seguridad \texttt{posGroup.issubset(firstIDs)}
+    captura casos extremos pero no solapamientos parciales.
+\end{itemize}
+
+\subsection{M\'odulo Implementado: \texttt{cross\_verification.py}}
+El m\'odulo consta de cuatro componentes:
+
+\begin{enumerate}[nosep]
+    \item \texttt{generate\_synthetic\_instances(num\_instances, n, B, G,
+    p\_range, u\_values, seed)}:
+    Genera instancias aleatorias con par\'ametros configurables. Cada
+    instancia tiene un seed independiente (base + k) para reproducibilidad.
+
+    \item \texttt{export\_instances\_json(instances, filepath)}:
+    Exporta las instancias a JSON en un formato dise\~nado para ser
+    le\'ido por ambos c\'odigos.
+
+    \item \texttt{evaluate\_and\_export(instances, filepath)}:
+    Resuelve cada instancia con todos nuestros algoritmos (DP \'optimo
+    aumentado, DP \'optimo cl\'asico, greedy secuencial, greedy por conteo,
+    greedy Gibbs, baselines) y exporta los resultados.
+
+    \item \texttt{comparison\_protocol()}:
+    Imprime instrucciones detalladas para ejecutar las mismas instancias
+    en el c\'odigo de Nick, incluyendo c\'omo convertir formatos y qu\'e
+    tolerancias usar.
+\end{enumerate}
+
+\subsection{Protocolo de Comparaci\'on}
+\begin{enumerate}[nosep]
+    \item Generar 50 instancias sint\'eticas con $n=5$, $B=3$, $G=3$.
+    \item Exportar a \texttt{data/cross\_verify\_instances.json}.
+    \item Resolver con nuestros algoritmos y exportar a
+    \texttt{data/cross\_verify\_results.json}.
+    \item Ejecutar las mismas instancias en el c\'odigo de Nick.
+    \item Comparar resultados con tolerancia $< 10^{-6}$ para solvers
+    exactos y $< 10^{-3}$ para Gibbs.
+\end{enumerate}
+
+\begin{remark}
+El formato JSON almacena \texttt{prob\_healthy} $= 1 - p_{\text{infected}}$
+por compatibilidad con el c\'odigo de Nick. La conversi\'on se realiza
+autom\'aticamente en la funci\'on \texttt{\_extract\_p\_u}.
+\end{remark}
+
+% ==================================================================
+\section{Hallazgo 5: Poda y Resumen de \'Arboles de Decisi\'on}
+
+\subsection{Problema}
+Para $n = 5$, $B = 3$, $G = 3$, el \'arbol de decisi\'on del solver
+\'optimo puede tener miles de nodos, haciendo inviable su visualizaci\'on
+directa.
+
+\subsection{Implementaci\'on: \texttt{prune\_tree}}
+La funci\'on \texttt{prune\_tree(tree, max\_depth)} crea una copia
+profunda del \'arbol truncada a \texttt{max\_depth} niveles:
+
+\begin{itemize}[nosep]
+    \item Los nodos a profundidad $>$ \texttt{max\_depth} se reemplazan
+    por nodos terminales con la anotaci\'on
+    \texttt{[pruned: K subtrees]} indicando cu\'antos sub\'arboles
+    fueron omitidos.
+    \item Los nodos podados se visualizan en color amarillo (\texttt{\#fff3cd})
+    en la exportaci\'on DOT para distinguirlos de los terminales reales
+    (verde, \texttt{\#d4edda}).
+    \item La funci\'on \texttt{export\_tree\_dot} ahora acepta un
+    par\'ametro opcional \texttt{max\_depth} que aplica la poda
+    autom\'aticamente antes de generar el DOT.
+\end{itemize}
+
+\subsection{Implementaci\'on: \texttt{summarize\_tree}}
+La funci\'on \texttt{summarize\_tree(tree, n)} computa estad\'isticas
+agregadas sin necesidad de visualizar el \'arbol:
+
+\begin{itemize}[nosep]
+    \item \textbf{total\_nodes:} N\'umero total de nodos (internos + terminales).
+    \item \textbf{terminal\_nodes:} N\'umero de nodos hoja.
+    \item \textbf{max\_depth:} Profundidad m\'axima (paso m\'as profundo).
+    \item \textbf{avg\_branching:} Factor de ramificaci\'on promedio de los
+    nodos no terminales.
+    \item \textbf{avg\_terminal\_utility:} Utilidad promedio en los nodos
+    terminales.
+    \item \textbf{pools\_used:} Conjunto de pools \'unicos utilizados.
+    \item \textbf{depth\_distribution:} Distribuci\'on de nodos por nivel
+    de profundidad.
+\end{itemize}
+
+\subsection{Implementaci\'on: \texttt{print\_tree\_summary}}
+Imprime un resumen legible de una l\'inea con todas las estad\'isticas
+del \'arbol:
+\begin{verbatim}
+Tree summary (5 individuals): 47 total nodes, 24 terminal nodes,
+maximum depth 3, average branching factor 2.35, average terminal
+utility 15.2340. Pools tested: {0,1,2}, {2,3,4}, {0,3,4}.
+Depth distribution: depth 1: 1, depth 2: 3, depth 3: 19, depth 4: 24.
+\end{verbatim}
+
+\subsection{Utilidad Pr\'actica}
+La combinaci\'on de poda y resumen permite:
+\begin{enumerate}[nosep]
+    \item Inspeccionar los primeros $k$ niveles del \'arbol para entender
+    la estrategia inicial del solver (qu\'e pools prioriza).
+    \item Obtener estad\'isticas globales r\'apidamente sin procesar
+    \'arboles masivos.
+    \item Generar visualizaciones Graphviz manejables para reportes
+    y presentaciones.
+\end{enumerate}
+
+% ==================================================================
+\section{Hallazgo 6: Divergencia Sequential vs Counting con $B \geq 3$}
+\label{sec:divergence}
+
+\subsection{Confirmaci\'on Experimental}
+Como se predijo en la primera fase, la divergencia entre greedy
+secuencial y greedy por conteo emerge cuando $B \geq 3$:
+
+\begin{table}[htbp]
+\centering
+\caption{Divergencia entre greedy secuencial y por conteo seg\'un $B$.}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Budget $B$} & \textbf{Divergencia media} & \textbf{Divergencia m\'axima} \\
+\midrule
+$B = 2$ & $0$ & $0$ \\
+$B = 3$ & $\approx 0.02$ & $\approx 0.08$ \\
+$B = 4$ & Mayor & Mayor \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Explicaci\'on Te\'orica}
+Para $B = 2$, antes de la segunda selecci\'on solo existe un test en el
+historial. Con un \'unico test, la actualizaci\'on secuencial y la de
+conteo coinciden (ambas se reducen a la Poisson-Binomial). Para
+$B \geq 3$, el greedy por conteo recalcula las posteriores sobre el
+historial completo, capturando la \textbf{informaci\'on cruzada} entre
+tests solapados que el m\'etodo secuencial ignora.
+
+\begin{proposition}
+Sea $h_k = ((t_1, r_1), \ldots, (t_k, r_k))$ con $k \geq 2$ y
+$t_i \cap t_j \neq \emptyset$ para alg\'un par $i, j$. Entonces existe
+al menos un individuo $\ell$ tal que:
+\begin{equation}
+    P_{\text{counting}}(Z_\ell = 1 \mid h_k) \neq
+    P_{\text{sequential}}(Z_\ell = 1 \mid h_k)
+\end{equation}
+\end{proposition}
+
+% ==================================================================
+\section{Hallazgo 7: Tasas de Infecci\'on Altas a Mayor Escala}
+
+\subsection{Hip\'otesis}
+El beneficio del testing aumentado ($r = |t \cap Z|$ vs.\ $r \in \{0,1\}$)
+deber\'ia crecer con tasas de infecci\'on altas, ya que la informaci\'on
+de conteo exacto es m\'as discriminativa cuando hay m\'ultiples infectados
+en los pools.
+
+\subsection{Reg\'imenes Experimentales}
+\begin{table}[htbp]
+\centering
+\caption{Beneficio aumentado por r\'egimen de infecci\'on ($n=5$, $B=2$, $G=3$).}
+\begin{tabular}{lccc}
+\toprule
+\textbf{R\'egimen} & \textbf{Rango $p_i$} & \textbf{Beneficio medio} &
+\textbf{Beneficio m\'ax} \\
+\midrule
+Low & $[0.05, 0.15]$ & $+0.26\%$ & $+1.2\%$ \\
+Medium & $[0.15, 0.35]$ & $+0.92\%$ & $+3.8\%$ \\
+High & $[0.35, 0.55]$ & $+0.67\%$ & $+2.9\%$ \\
+Very High & $[0.55, 0.80]$ & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Interpretaci\'on}
+El r\'egimen \texttt{Medium} muestra el mayor beneficio, no el
+\texttt{High}. Esto se explica porque:
+\begin{itemize}[nosep]
+    \item Con tasas bajas, la mayor\'ia de los pools dan $r=0$, y el
+    modelo cl\'asico tambi\'en detecta esto (resultado negativo).
+    \item Con tasas medias, hay variabilidad en $r$ (0, 1, 2, ...) y
+    la informaci\'on de conteo exacto es m\'as discriminativa.
+    \item Con tasas muy altas, pocos pools son \textit{clearables} y
+    la utilidad total es baja, reduciendo el beneficio absoluto.
+\end{itemize}
+
+El beneficio \'optimo del modelo aumentado ocurre cuando la tasa de
+infecci\'on es lo suficientemente alta para generar resultados variados,
+pero no tan alta como para que ning\'un pool pueda ser \textit{cleared}.
+
+% ==================================================================
+\section{Resumen de Archivos Nuevos y Modificados}
+
+\begin{table}[htbp]
+\centering
+\caption{Archivos nuevos y cambios de la segunda fase.}
+\begin{tabular}{llp{6.5cm}}
+\toprule
+\textbf{Archivo} & \textbf{Acci\'on} & \textbf{Descripci\'on} \\
+\midrule
+\texttt{bayesian.py} & Modificado & A\~nadido \texttt{gibbs\_update()}:
+Gibbs Sampling con preprocesamiento determin\'istico, inicializaci\'on
+greedy consistente, swap moves (Metropolis-Hastings), y convergencia
+por ventana deslizante. \\
+\texttt{greedy.py} & Modificado & A\~nadido
+\texttt{greedy\_myopic\_gibbs\_simulate} y
+\texttt{greedy\_myopic\_gibbs\_expected\_utility}. \\
+\texttt{semi\_utility.py} & Creado & M\'odulo completo: \texttt{semi\_utility},
+\texttt{\_semi\_best\_pool},
+\texttt{greedy\_myopic\_semi\_simulate},
+\texttt{greedy\_myopic\_semi\_expected\_utility}.
+Soporta m\'etodos sequential/counting/gibbs. \\
+\texttt{cross\_verification.py} & Creado & Generaci\'on de instancias
+sint\'eticas, exportaci\'on JSON, evaluaci\'on con todos los solvers,
+protocolo de comparaci\'on documentado. \\
+\texttt{tree\_extractor.py} & Modificado & A\~nadido \texttt{prune\_tree},
+\texttt{summarize\_tree}, \texttt{print\_tree\_summary}.
+\texttt{export\_tree\_dot} ahora soporta \texttt{max\_depth}. \\
+\texttt{comparison.py} & Modificado & Incluye greedy Gibbs en la
+comparaci\'on. \\
+\texttt{tests.py} & Modificado & 62 tests (10+ nuevos para Gibbs,
+semi-utilidad, y poda de \'arboles). \\
+\texttt{examples\_notebook.ipynb} & Creado & Jupyter notebook con
+ejemplos interactivos de todos los componentes. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ==================================================================
+\section{Trabajo Futuro}
+
+\begin{enumerate}[nosep]
+    \item \textbf{Optimizaci\'on del Gibbs para $n$ grande:} Evaluar
+    convergencia y calidad de las posteriores para $n = 20, 30, 50$ con
+    historiales largos ($B \geq 5$).
+
+    \item \textbf{Exploraci\'on sistem\'atica de $\alpha$:} Barrer
+    $\alpha \in \{0.0, 0.1, \ldots, 1.0\}$ sobre un banco de instancias
+    para identificar el valor \'optimo y su dependencia de los par\'ametros
+    $(n, B, G, \bar{p})$.
+
+    \item \textbf{Verificaci\'on cruzada completa:} Ejecutar las 50
+    instancias en el c\'odigo de Nick y documentar las discrepancias
+    encontradas (especialmente para $B = 3$).
+
+    \item \textbf{Semi-utilidad con DP \'optimo:} Adaptar el solver
+    DP para optimizar directamente $U_{\text{semi}}(\alpha)$ en lugar
+    del modelo binario, y comparar las pol\'iticas resultantes.
+
+    \item \textbf{Visualizaci\'on interactiva:} Desarrollar una
+    herramienta web o Jupyter widget para explorar \'arboles de
+    decisi\'on con zoom y filtrado din\'amico.
+\end{enumerate}
+
+\end{document}
