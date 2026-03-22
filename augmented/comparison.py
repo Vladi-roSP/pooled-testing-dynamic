@@ -14,6 +14,7 @@ from augmented.solver import solve_optimal_dapts
 from augmented.greedy import (greedy_myopic_expected_utility,
                               greedy_myopic_counting_expected_utility,
                               greedy_myopic_gibbs_expected_utility)
+from augmented.pool_solvers import mosek_best_pool, gurobi_best_pool
 
 
 def compare_all(p, u, B, G):
@@ -33,6 +34,10 @@ def compare_all(p, u, B, G):
     results["U_greedy"] = greedy_myopic_expected_utility(p, u, B, G)
     results["U_greedy_counting"] = greedy_myopic_counting_expected_utility(p, u, B, G)
     results["U_greedy_gibbs"] = greedy_myopic_gibbs_expected_utility(p, u, B, G, seed=42)
+    results["U_greedy_mosek"] = greedy_myopic_expected_utility(
+        p, u, B, G, pool_selector=mosek_best_pool)
+    results["U_greedy_gurobi"] = greedy_myopic_expected_utility(
+        p, u, B, G, pool_selector=gurobi_best_pool)
     results["U_max"] = u_max(p, u)
 
     return results
@@ -70,6 +75,8 @@ def print_comparison(p, u, B, G, label=""):
     print(f"  {'U^greedy  (myopic augmented greedy)':42s} = {results['U_greedy']:.6f}")
     print(f"  {'U^greedy_counting  (full-history Bayes)':42s} = {results['U_greedy_counting']:.6f}")
     print(f"  {'U^greedy_gibbs  (Gibbs sampling MCMC)':42s} = {results['U_greedy_gibbs']:.6f}")
+    print(f"  {'U^greedy_mosek  (Mosek pool selector)':42s} = {results['U_greedy_mosek']:.6f}")
+    print(f"  {'U^greedy_gurobi (Gurobi pool selector)':42s} = {results['U_greedy_gurobi']:.6f}")
 
     # Verify inequality chain
     print()

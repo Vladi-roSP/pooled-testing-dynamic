@@ -21,6 +21,7 @@ from augmented.solver import solve_optimal_dapts
 from augmented.classical_solver import solve_classical_dynamic
 from augmented.greedy import (greedy_myopic_expected_utility,
                               greedy_myopic_counting_expected_utility)
+from augmented.pool_solvers import mosek_best_pool, gurobi_best_pool
 
 
 def random_instance(n, B, G, p_range=(0.01, 0.50), u_range=(1.0, 10.0),
@@ -75,6 +76,12 @@ def evaluate_instance(instance, include_counting_greedy=True):
     if include_counting_greedy:
         results['U_greedy_counting'] = greedy_myopic_counting_expected_utility(
             p, u, B, G)
+
+    # Solver-based greedy (works for any n)
+    results['U_greedy_mosek'] = greedy_myopic_expected_utility(
+        p, u, B, G, pool_selector=mosek_best_pool)
+    results['U_greedy_gurobi'] = greedy_myopic_expected_utility(
+        p, u, B, G, pool_selector=gurobi_best_pool)
 
     return results
 
@@ -166,10 +173,13 @@ def summarize_results(all_results):
             'U_D_A': 'U_D_A (augmented dynamic)',
             'U_greedy': 'U_greedy (myopic)',
             'U_greedy_counting': 'U_greedy_counting (full-history)',
+            'U_greedy_mosek': 'U_greedy_mosek (Mosek solver)',
+            'U_greedy_gurobi': 'U_greedy_gurobi (Gurobi solver)',
         }
 
         order = ['U_single', 'U_D', 'U_D_A', 'U_greedy',
-                 'U_greedy_counting', 'U_max']
+                 'U_greedy_counting', 'U_greedy_mosek', 'U_greedy_gurobi',
+                 'U_max']
         for key in order:
             if key in stats:
                 s = stats[key]

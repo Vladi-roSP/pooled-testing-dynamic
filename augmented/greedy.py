@@ -60,11 +60,17 @@ def _myopic_best_pool(p, u, G, n, cleared_mask, use_filtering=True):
     return best_pool
 
 
-def greedy_myopic_simulate(p, u, B, G, z_mask):
+def greedy_myopic_simulate(p, u, B, G, z_mask, pool_selector=None):
     """Simulate myopic greedy on a fixed infection profile z_mask.
 
     At each step: pick best myopic pool, observe augmented result,
     update beliefs via Bayesian update, repeat.
+
+    Parameters
+    ----------
+    pool_selector : callable or None
+        If provided, called as pool_selector(p, u, G, n, cleared_mask)
+        to select the pool at each step.  Defaults to _myopic_best_pool.
 
     Returns (history, cleared_mask, utility).
     """
@@ -74,7 +80,10 @@ def greedy_myopic_simulate(p, u, B, G, z_mask):
     history = ()
 
     for _ in range(B):
-        pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
+        if pool_selector is not None:
+            pool = pool_selector(current_p, u, G, n, cleared_mask)
+        else:
+            pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
         if pool == 0:
             break  # no useful pool
         r = test_result(pool, z_mask)
@@ -87,11 +96,17 @@ def greedy_myopic_simulate(p, u, B, G, z_mask):
     return history, cleared_mask, utility
 
 
-def greedy_myopic_expected_utility(p, u, B, G):
+def greedy_myopic_expected_utility(p, u, B, G, pool_selector=None):
     """Expected utility of the myopic greedy strategy.
 
     At each step picks the myopic-best pool, then recurses over all
     possible outcomes (r=0,...,|t|) weighted by their probabilities.
+
+    Parameters
+    ----------
+    pool_selector : callable or None
+        If provided, called as pool_selector(p, u, G, n, cleared_mask)
+        to select the pool at each step.  Defaults to _myopic_best_pool.
     """
     n = len(p)
 
@@ -99,7 +114,10 @@ def greedy_myopic_expected_utility(p, u, B, G):
         if b == 0:
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
-        pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
+        if pool_selector is not None:
+            pool = pool_selector(current_p, u, G, n, cleared_mask)
+        else:
+            pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
         if pool == 0:
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
@@ -228,7 +246,7 @@ def greedy_lookahead_simulate(p, u, B, G, z_mask):
 # Counting-based greedy: full-history Bayesian update by counting
 # -------------------------------------------------------------------
 
-def greedy_myopic_counting_simulate(p, u, B, G, z_mask):
+def greedy_myopic_counting_simulate(p, u, B, G, z_mask, pool_selector=None):
     """Simulate myopic greedy with full-history Bayesian update by counting.
 
     Like greedy_myopic_simulate but at each step computes posteriors by
@@ -251,7 +269,10 @@ def greedy_myopic_counting_simulate(p, u, B, G, z_mask):
         else:
             current_p = list(p)
 
-        pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
+        if pool_selector is not None:
+            pool = pool_selector(current_p, u, G, n, cleared_mask)
+        else:
+            pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
         if pool == 0:
             break
         r = test_result(pool, z_mask)
@@ -264,7 +285,8 @@ def greedy_myopic_counting_simulate(p, u, B, G, z_mask):
 
 
 def greedy_myopic_gibbs_simulate(p, u, B, G, z_mask,
-                                 num_iterations=1000, burn_in=200, seed=None):
+                                 num_iterations=1000, burn_in=200, seed=None,
+                                 pool_selector=None):
     """Simulate myopic greedy with Gibbs sampling posterior updates.
 
     Like greedy_myopic_counting_simulate but uses Gibbs sampling (MCMC)
@@ -286,7 +308,10 @@ def greedy_myopic_gibbs_simulate(p, u, B, G, z_mask,
         else:
             current_p = list(p)
 
-        pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
+        if pool_selector is not None:
+            pool = pool_selector(current_p, u, G, n, cleared_mask)
+        else:
+            pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
         if pool == 0:
             break
         r = test_result(pool, z_mask)
@@ -300,7 +325,7 @@ def greedy_myopic_gibbs_simulate(p, u, B, G, z_mask,
 
 def greedy_myopic_gibbs_expected_utility(p, u, B, G,
                                           num_iterations=1000, burn_in=200,
-                                          seed=42):
+                                          seed=42, pool_selector=None):
     """Expected utility of myopic greedy with Gibbs sampling posteriors.
 
     At each step picks the myopic-best pool using Gibbs-sampled posteriors,
@@ -321,7 +346,10 @@ def greedy_myopic_gibbs_expected_utility(p, u, B, G,
         else:
             current_p = list(prior_p)
 
-        pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
+        if pool_selector is not None:
+            pool = pool_selector(current_p, u, G, n, cleared_mask)
+        else:
+            pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
         if pool == 0:
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
@@ -340,7 +368,7 @@ def greedy_myopic_gibbs_expected_utility(p, u, B, G,
     return recurse(list(p), (), B, 0)
 
 
-def greedy_myopic_counting_expected_utility(p, u, B, G):
+def greedy_myopic_counting_expected_utility(p, u, B, G, pool_selector=None):
     """Expected utility of myopic greedy with full-history Bayesian counting.
 
     At each step picks the myopic-best pool using posteriors computed by
@@ -359,7 +387,10 @@ def greedy_myopic_counting_expected_utility(p, u, B, G):
         else:
             current_p = list(prior_p)
 
-        pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
+        if pool_selector is not None:
+            pool = pool_selector(current_p, u, G, n, cleared_mask)
+        else:
+            pool = _myopic_best_pool(current_p, u, G, n, cleared_mask)
         if pool == 0:
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 

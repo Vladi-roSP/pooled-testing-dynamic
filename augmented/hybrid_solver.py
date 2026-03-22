@@ -249,7 +249,8 @@ def _remap_tree_indices(tree, idx_map, n, full_p, cleared_mask, u):
 
 def hybrid_greedy_bruteforce(p, u, B, G, greedy_steps,
                               greedy_score_fn=None,
-                              update_method='sequential'):
+                              update_method='sequential',
+                              pool_selector=None):
     """Hybrid solver: greedy for first K steps, then exact DP.
 
     Returns (tree_dict, expected_utility).
@@ -272,9 +273,16 @@ def hybrid_greedy_bruteforce(p, u, B, G, greedy_steps,
         to select the pool at each greedy step.  Returns pool mask.
     update_method : str
         'sequential' for standard Bayesian updates.
+    pool_selector : callable or None
+        If provided and greedy_score_fn is None, used as the pool
+        selection function.  Same signature as greedy_score_fn.
     """
     n = len(p)
     K = min(greedy_steps, B)
+
+    # If pool_selector provided, wrap it as greedy_score_fn
+    if pool_selector is not None and greedy_score_fn is None:
+        greedy_score_fn = pool_selector
 
     # Special case: full DP (K=0)
     if K == 0:
