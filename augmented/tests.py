@@ -910,6 +910,109 @@ def test_gibbs_greedy_vs_counting_eu():
 
 
 # ===================================================================
+# Independence-heuristic gap: exact joint vs product of marginals
+# ===================================================================
+
+from augmented.independence_gap import (
+    exact_pool_pmf, independence_pool_pmf, tv_distance, gap_summary,
+    run_experiment, aggregate,
+)
+
+
+def test_exact_pool_pmf_empty_history_matches_poisson_binomial():
+    # With no history, the joint over (Z_i)_{i in t} is the independent
+    # prior, so the exact PMF equals the Poisson-Binomial on the prior.
+    n = 6
+    p = [0.1, 0.2, 0.3, 0.15, 0.4, 0.05]
+    pool = mask_from_indices([0, 2, 4])
+    exact = exact_pool_pmf(p, (), pool, n)
+    expected = _poisson_binomial_pmf([p[0], p[2], p[4]])
+    for a, b in zip(exact, expected):
+        assert abs(a - b) < 1e-12, f"exact={exact} expected={expected}"
+
+
+def test_exact_pool_pmf_singleton_gives_marginal():
+    # For a singleton {i}, PMF is (1 - tilde_p_i, tilde_p_i).
+    n = 5
+    p = [0.3, 0.2, 0.5, 0.1, 0.4]
+    history = ((mask_from_indices([0, 1]), 1),)
+    pool = mask_from_indices([2])
+    exact = exact_pool_pmf(p, history, pool, n)
+    post = bayesian_update_by_counting(p, history, n)
+    assert abs(exact[0] - (1 - post[2])) < 1e-12
+    assert abs(exact[1] - post[2]) < 1e-12
+
+
+def test_singleton_gap_is_zero():
+    # Heuristic and exact MUST agree for singleton pools by construction.
+    n = 5
+    p = [0.3, 0.2, 0.5, 0.1, 0.4]
+    history = ((mask_from_indices([0, 1, 2]), 2),)
+    for i in range(n):
+        summary = gap_summary(p, history, mask_from_indices([i]), n)
+        assert summary['tv'] < 1e-12, f"singleton {i}: tv={summary['tv']}"
+
+
+def test_deterministic_subset_shows_gap():
+    # User's example: t' ⊂ t with t' "positive" (r' >= 1). Then for any
+    # superset t, P(r_t = 0 | H) = 0 exactly. With a symmetric prior and
+    # r' = 1 on a 2-pool, the marginals remain nondegenerate (0.5, 0.5),
+    # so the heuristic puts positive mass on r_t = 0 and we see a gap.
+    n = 4
+    p = [0.5, 0.5, 0.5, 0.5]
+    tprime = mask_from_indices([0, 1])
+    history = ((tprime, 1),)  # exactly one of {0,1} is infected
+    t = mask_from_indices([0, 1, 2, 3])
+
+    summary = gap_summary(p, history, t, n)
+    assert summary['exact_pmf'][0] == 0.0, summary['exact_pmf']
+    assert summary['heuristic_pmf'][0] > 0.0, summary['heuristic_pmf']
+    assert summary['tv'] > 0.01, summary['tv']
+
+
+def test_all_healthy_subset_heuristic_is_exact():
+    # If t' ⊂ t returned r'=0, the marginals tilde_p_i for i in t' are
+    # forced to 0. The Poisson-Binomial on (0, 0, tilde_p_j, tilde_p_k, ...)
+    # then correctly recovers the exact joint PMF of r_t, because the
+    # remaining indices j, k, ... are genuinely independent given history
+    # (no further constraints tie them together). So the heuristic is
+    # EXACT here — this is a "safe" regime for the independence assumption.
+    n = 5
+    p = [0.4, 0.4, 0.4, 0.4, 0.4]
+    tprime = mask_from_indices([0, 1])
+    history = ((tprime, 0),)
+    t = mask_from_indices([0, 1, 2, 3])
+
+    summary = gap_summary(p, history, t, n)
+    m = summary['pool_size']
+    assert summary['exact_pmf'][m] == 0.0, summary['exact_pmf']
+    assert summary['tv'] < 1e-12, f"expected exact match, tv={summary['tv']}"
+
+
+def test_tv_is_symmetric_and_bounded():
+    a = [0.1, 0.6, 0.3]
+    b = [0.5, 0.2, 0.3]
+    d = tv_distance(a, b)
+    assert abs(d - tv_distance(b, a)) < 1e-12
+    assert 0.0 <= d <= 1.0
+
+
+def test_run_experiment_smoke():
+    # Small smoke test: 20 instances, n=6, confirm we get gaps and that
+    # some pools exhibit nonzero TV under a nontrivial history.
+    rows = run_experiment(n=6, B=2, G=3, num_instances=20, seed=0,
+                          history_strategy='greedy')
+    assert len(rows) > 0
+    nonzero = [r for r in rows if r['tv'] > 1e-9]
+    assert len(nonzero) > 0, "expected at least some gap > 0"
+    summary = aggregate(rows)
+    assert 2 in summary and 3 in summary
+    for size_stats in summary.values():
+        assert 0.0 <= size_stats['tv_mean'] <= 1.0
+        assert size_stats['tv_max'] >= size_stats['tv_median']
+
+
+# ===================================================================
 # Run all tests
 # ===================================================================
 
