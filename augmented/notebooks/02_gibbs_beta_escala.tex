@@ -1,0 +1,171 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{Verificacion de Gibbs, Parametro Beta, y Experimentos a Escala\\
+\large (Notebook: phase3\_findings)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este documento cubre tres temas:
+(1) encontramos y corregimos un bug en el muestreador de Gibbs,
+(2) exploramos el parametro $\beta$ que controla cuanto le importa
+al algoritmo ``aprender'' vs ``aclarar'', y
+(3) corrimos experimentos preliminares con 20 personas.
+Los parametros $\alpha$ y las comparaciones con la tesis de Nico
+estan en el documento 03.
+\end{abstract}
+
+%% ====================================================================
+\section{El Bug del Gibbs y Como lo Arreglamos}
+
+\subsection{Que es el Gibbs?}
+
+Cuando tenemos muchas personas ($n > 20$), no podemos calcular las
+probabilidades exactas de infeccion despues de un test.
+Usamos \textbf{muestreo de Gibbs}: un metodo que genera muchas
+combinaciones posibles de ``quien esta infectado'' y promedia sobre ellas.
+
+\subsection{El problema}
+
+Encontramos que Gibbs daba respuestas incorrectas cuando los pools
+se traslapaban (compartian personas).
+
+\textbf{Ejemplo:} si pool 1 = $\{A, B\}$ y pool 2 = $\{B, C\}$,
+los resultados de ambos tests restringen juntos quien puede estar infectado.
+Gibbs no exploraba bien todas las combinaciones validas --- se quedaba
+``atrapado'' en una region del espacio.
+
+\textbf{Antes del fix:} 85.8\% de tests pasaban.
+\textbf{Despues del fix:} 100\% de tests pasaban (64/64).
+
+\subsection{La solucion}
+
+Dos cambios:
+\begin{enumerate}
+  \item Si quedan $\leq 7$ personas activas, calcular exacto (no Gibbs).
+  \item Agregar ``movimientos de Metropolis-Hastings'': proponer intercambios
+        globales de infectado/sano entre pares de personas.
+        Esto permite saltar entre regiones desconectadas.
+\end{enumerate}
+
+\subsection{Verificacion de convergencia}
+
+Probamos con distintas cantidades de iteraciones:
+50, 100, 200, 500, 1000, 2000, 5000.
+
+\begin{itemize}
+  \item Con $\geq 500$ iteraciones, el error maximo cae por debajo de 0.03.
+  \item Con $\geq 2000$, el error es $< 0.01$.
+  \item Conclusion: 1000 iteraciones es un buen default.
+\end{itemize}
+
+%% ====================================================================
+\section{El Parametro Beta ($\beta$): Aclarar vs Aprender}
+
+\subsection{Que es $\beta$?}
+
+Cuando el algoritmo greedy elige que grupo testear, normalmente solo
+le importa una cosa: \emph{aclarar personas} (que el resultado sea $r=0$).
+
+Su puntaje para cada pool es:
+$$\text{score}_{\text{normal}} = P(r=0) \times \sum u_i$$
+
+Es decir: ``la probabilidad de que todos en el pool esten sanos, multiplicada
+por el valor total de aclarar a esas personas''.
+
+Pero hay otra cosa util: \emph{aprender quien esta infectado}.
+Aunque $r > 0$ (el pool sale positivo), el numero exacto $r$ nos da
+informacion valiosa sobre las personas del pool.
+
+$\beta$ agrega un bonus por informacion:
+$$\text{score}_{\beta} = P(r=0) \times \sum u_i \;+\; \beta \times \text{ganancia\_de\_info}$$
+
+\begin{itemize}
+  \item $\beta = 0$: greedy normal. Solo quiere aclarar.
+  \item $\beta > 0$: tambien valora aprender. Puede elegir pools mas grandes
+        o mas ``informativos'' aunque tengan menor chance de salir negativos.
+\end{itemize}
+
+\textbf{Analogia:} es como decidir entre una pregunta de examen facil
+(que sabes que vas a contestar bien) vs una dificil (que te ensena mas
+para las siguientes preguntas).
+
+\subsection{Que mide la ``ganancia de informacion''?}
+
+Usamos la metrica \texttt{confirmed}: cuenta cuantas personas
+quedarian con probabilidad $> 0.95$ o $< 0.05$ despues del test.
+Es decir, cuantas personas ``resolvemos'' en terminos de certeza,
+aunque no las ``aclaremos'' formalmente.
+
+\subsection{Experimento 1: Prevalencia alta ($p \approx 0.8$)}
+
+Escenario VIP con $n=20$, $B=6$, $G=10$. Los VIPs tienen $p=0.8$.
+
+\textbf{Resultado:} $\beta$ tiene efecto limitado.
+
+Por que? Porque con $p=0.8$, la probabilidad de que un pool salga
+negativo es casi cero ($0.2^k$ para un pool de tamano $k$).
+El score base es muy bajo, asi que $\beta$ tiene efecto limitado
+a valores chicos.
+Con $\beta$ grande (2+), la EU puede subir moderadamente
+y el algoritmo cambia a pools mas grandes, pero la relacion no es monotona.
+
+\subsection{Experimento 2: Prevalencia moderada ($p \approx 0.35$)}
+
+Escenario VIP similar con $n=20$, $B=6$, $G=5$, VIPs con $p=0.35$.
+
+\textbf{Resultado:} $\beta$ tiene efecto moderado.
+\begin{itemize}
+  \item $\beta = 0$: pools chicos, EU base.
+  \item $\beta = 2$: pools mas grandes, mejor EU entre los valores probados.
+  \item $\beta = 1$: no necesariamente mejor que $\beta = 0$ --- la relacion no es monotona.
+\end{itemize}
+
+\subsection{Resumen de $\beta$}
+
+\begin{table}[htbp]
+  \centering
+  \begin{tabular}{lcc}
+    \toprule
+    Prevalencia & Efecto de $\beta$ & Recomendacion \\
+    \midrule
+    Baja ($p < 0.1$) & No probado & Probablemente innecesario (pools ya funcionan bien) \\
+    Moderada ($p \approx 0.2$--$0.4$) & Moderado & Probar $\beta \in [1, 3]$ \\
+    Alta ($p > 0.5$) & Limitado & $\beta$ no ayuda mucho \\
+    \bottomrule
+  \end{tabular}
+  \caption{Cuando usar $\beta$.}
+\end{table}
+
+%% ====================================================================
+\section{Experimentos Preliminares a Gran Escala}
+
+Corrimos experimentos con $n=20$, $B=2$, $G=10$ (configuracion D).
+Estos son resultados \textbf{preliminares} con 1--2 instancias por configuracion
+(se necesitan $\sim$50 para conclusiones estadisticas).
+
+\subsection{Resultados}
+
+\begin{itemize}
+  \item El greedy (con Mosek para seleccion de pools) captura $\sim$35\% del
+        gap entre $U_{\text{single}}$ y $U_{\max}$.
+  \item El gap es grande: con solo $B=2$ tests para 20 personas,
+        hay mucho margen de mejora.
+  \item Con escenario VIP ($B=6$): el gap se reduce.
+  \item Con utilidades sesgadas (algunos valen mucho mas): el gap tambien cambia.
+\end{itemize}
+
+\textbf{Limitacion:} estos son quick-runs. Los numeros exactos pueden cambiar
+con mas instancias.
+
+\end{document}

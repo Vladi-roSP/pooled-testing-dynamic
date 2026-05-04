@@ -1,0 +1,188 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{Sintesis: Parametro Alpha y Comparaciones con Tesis de Nico\\
+\large (Notebook: combined\_findings)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este documento cubre dos cosas:
+(1) el parametro $\alpha$ que controla como el solver hibrido
+elige pools, y
+(2) comparaciones detalladas con resultados de la tesis de Nico
+sobre testing clasico.
+Los arboles de decision basicos estan en el documento 01,
+y el parametro $\beta$ y la verificacion de Gibbs en el documento 02.
+\end{abstract}
+
+%% ====================================================================
+\section{El Parametro Alpha ($\alpha$): Aclarar vs Informar en el Solver Hibrido}
+
+\subsection{Contexto: que es el solver hibrido?}
+
+El solver hibrido hace $K$ pasos con greedy y despues cambia a DP exacto
+(ver documento 01, seccion 10).
+Durante los pasos greedy, necesita decidir que pool testear.
+
+\subsection{Que es $\alpha$?}
+
+$\alpha$ controla como el solver hibrido puntua cada pool candidato:
+
+$$\text{score}_\alpha = \alpha \times \underbrace{P(r=0) \cdot \sum u_i}_{\text{aclarar}} \;+\; (1 - \alpha) \times \underbrace{\text{ganancia\_de\_info}}_{\text{aprender}}$$
+
+\begin{itemize}
+  \item $\alpha = 1$: solo le importa aclarar (puntaje miope estandar).
+  \item $\alpha = 0$: solo le importa aprender (maximiza reduccion de incertidumbre).
+  \item $\alpha = 0.5$: mitad y mitad.
+\end{itemize}
+
+\textbf{Analogia:} $\alpha$ es como elegir entre ``preguntar algo facil en un examen''
+($\alpha = 1$, seguro sacas puntos) vs ``preguntar algo que te ayuda a entender
+el resto del examen'' ($\alpha = 0$, inviertes en informacion).
+
+\subsection{Diferencia entre $\alpha$ y $\beta$}
+
+\begin{table}[htbp]
+  \centering
+  \begin{tabular}{lcc}
+    \toprule
+     & $\alpha$ (documento 03) & $\beta$ (documento 02) \\
+    \midrule
+    Donde se usa & Solver hibrido & Greedy puro \\
+    Como funciona & Pondera aclarar vs info & Suma bonus de info al score \\
+    Formula & $\alpha \cdot \text{aclarar} + (1-\alpha) \cdot \text{info}$ & $\text{aclarar} + \beta \cdot \text{info}$ \\
+    Rango & $[0, 1]$ & $[0, \infty)$ \\
+    Codigo & \texttt{hybrid\_solver.py} & \texttt{infection\_reward\_greedy.py} \\
+    \bottomrule
+  \end{tabular}
+  \caption{$\alpha$ y $\beta$ son similares pero se usan en contextos distintos.}
+\end{table}
+
+\subsection{Nota: hay otro $\alpha$ en semi\_utility}
+
+El archivo \texttt{semi\_utility.py} define un $\alpha$ diferente:
+$$U_{\text{semi}}(\alpha) = \sum u_i \left[ \alpha \cdot P(\text{sano}_i \mid \text{historia}) + (1-\alpha) \cdot \mathbf{1}_{\text{aclarado}}(i) \right]$$
+
+Aqui $\alpha = 0$ es utilidad por aclarar (binario: aclarado o no),
+y $\alpha = 1$ es utilidad por probabilidad de estar sano.
+\textbf{No confundir} con el $\alpha$ del solver hibrido.
+En este documento nos referimos solo al $\alpha$ del solver hibrido.
+
+\subsection{Experimento: EU vs $\alpha$}
+
+$n=6$, $B=4$, $G=3$, $p=[0.3]^6$, $u=[1]^6$.
+Probamos $\alpha \in \{0.0, 0.25, 0.5, 0.75, 1.0\}$.
+
+\textbf{Resultado:} el mejor $\alpha$ depende de la instancia.
+Generalmente, un valor intermedio ($\alpha \approx 0.5$) funciona bien.
+$\alpha = 0$ (solo informacion) y $\alpha = 1$ (solo aclarar)
+suelen ser peores que valores intermedios.
+
+\subsection{Resumen de $\alpha$}
+
+$\alpha$ intermedio ($\sim 0.5$) funciona bien en general.
+A prevalencia extrema (muy baja o muy alta), no importa mucho.
+Para detalles de $\beta$, ver documento 02.
+
+%% ====================================================================
+\section{Comparaciones con la Tesis de Nico}
+
+La tesis de Nico estudia pooled testing clasico (resultado binario).
+Nosotros extendemos al caso aumentado (resultado = conteo).
+Reproducimos sus ejemplos clave para ver que cambia.
+
+\subsection{Ejemplo 4.4: Greedy elige el pool equivocado}
+
+$n=3$, $B=2$, $G=3$, $p = [1/4, 1/4, 1/4]$, $u = [1, 1, 1]$.
+
+Nico mostro que greedy clasico puede elegir un mal pool de seguimiento
+despues de un resultado positivo.
+
+En nuestro framework aumentado, el optimo dinamico y el clasico dan
+la misma EU ($= 1.875$) en este caso --- el espacio es tan chico ($n=3$)
+que no hay diferencia.
+Sin embargo, \textbf{greedy secuencial} ($= 1.6875$) si pierde calidad,
+confirmando que la historia completa importa.
+
+\textbf{Resultado:} optimo $>$ greedy; aumentado $=$ clasico en este caso chico.
+
+\subsection{Ejemplo 6.2: Trade-off entre EU media y riesgo}
+
+$n=3$, $B=2$, $G=3$, $p = [0.9, 0.5, 0.5]$, $u = [1, 1, 1]$.
+
+Nota: $p_i$ es probabilidad de infeccion, asi que persona A ($p=0.9$)
+esta \emph{casi seguro infectada}.
+
+En este caso todas las estrategias dan $\text{EU} = 1.0$.
+El espacio es demasiado chico para que haya diferencias.
+El punto de Nico (trade-off entre EU media y riesgo de cola)
+se observa mejor a $n$ mas grande, como en nuestro Part 6.
+
+\subsection{Ejemplo 6.3: Efecto de G}
+
+$n=4$, $B=2$, $p = [1.0, 0.75, 0.75, 0.75]$, $u = [1, 1, 1, 1]$.
+Persona A esta seguro infectada ($p=1.0$). Variamos $G$.
+
+En este caso extremo ($p_0 = 1$), las estrategias coinciden
+($\text{EU} = 0.5$ para todo $G$).
+El conteo aumentado no agrega informacion cuando una persona
+ya es seguro infectada.
+
+\subsection{Escalamiento con B}
+
+$n=5$, $G=3$, $B = 1, 2, 3, 4$. 30 instancias aleatorias por $B$.
+
+La ventaja del aumentado sobre el clasico es mayor a $B$ intermedio.
+A $B$ grande (cercano a $n$), todos los individuos se resuelven
+y las estrategias convergen.
+Este resultado se confirma con mas detalle en el documento principal
+(paper\_findings, Part 3B).
+
+\subsection{Ejemplo 6.1: maxima divergencia}
+
+$n=3$, $B=2$, $G=3$, $p = [0.91, 0.17, 0.69]$, $u = [0.5, 0.9, 0.33]$.
+
+Nico identifica esta instancia como la de mayor gap dinamico vs estatico.
+En nuestro framework, todas las estrategias dan EU similar ($\approx 0.849$)
+en este caso chico.
+La divergencia que Nico observa se da en el framework clasico con
+diferentes restricciones de pool.
+
+\subsection{El problema de la ``persona segura''}
+
+La estrategia dinamica tiende a incluir a la persona menos infectada
+como ancla en multiples pools.
+Funciona bien en promedio, pero si esa persona esta infectada,
+todos los pools que la incluian se invalidan.
+
+Los datos muestran que con $\beta = 0$ o $\beta = 0.5$ el algoritmo
+ya excluye al ancla en algunos casos.
+Con $\beta \geq 1$, el algoritmo puede incluirlo mas (no menos),
+lo cual baja la EU.
+El efecto de $\beta$ en este problema es no trivial y depende del caso.
+
+%% ====================================================================
+\section{Resumen}
+
+\begin{enumerate}
+  \item $\alpha$ (solver hibrido): valor intermedio $\sim 0.5$ funciona bien.
+  \item En los ejemplos de Nico ($n=3$), aumentado $\approx$ clasico.
+        El espacio es demasiado chico para que el conteo agregue valor.
+  \item La ventaja del aumentado se manifiesta mejor a $n$ y $B$ mas grandes
+        (ver paper\_findings, Parts 2--4).
+  \item Greedy secuencial si pierde calidad vs optimo, incluso a $n=3$.
+  \item El problema de la ``persona segura'' existe: el efecto de $\beta$
+        es no trivial y depende del caso (ver documento 02 para detalles de $\beta$).
+\end{enumerate}
+
+\end{document}

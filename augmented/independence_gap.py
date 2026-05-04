@@ -34,7 +34,7 @@ import random
 from statistics import mean, median
 
 from augmented.core import (
-    indices_from_mask, popcount, test_result, all_pools_from_mask,
+    indices_from_mask, popcount, test_result, all_pools, all_pools_from_mask,
 )
 from augmented.bayesian import (
     bayesian_update_by_counting,
@@ -217,6 +217,103 @@ def run_experiment(n=8, B=3, G=3, num_instances=200, pool_sizes=None,
             rows.append(summary)
 
     return rows
+
+
+# -------------------------------------------------------------------
+# "The payoff": greedy with exact P(r=0 | H) scoring
+# -------------------------------------------------------------------
+#
+# The myopic greedy currently scores a pool t by
+#     score(t) = prod_{i in t} (1 - tilde_p_i) * sum_{i in t} u_i,
+# using the independence heuristic. When the exact joint posterior is
+# far from the product-of-marginals, this can mislead the selection.
+# The functions below score pools using the EXACT conditional
+# probability P(r_t = 0 | H), computed from the set of infection
+# profiles still consistent with the history.
+
+def _prior_weights_indep(p, n):
+    q = [1.0 - pi for pi in p]
+    num_profiles = 1 << n
+    w = [0.0] * num_profiles
+    for z in range(num_profiles):
+        wz = 1.0
+        for i in range(n):
+            wz *= p[i] if (z >> i & 1) else q[i]
+        w[z] = wz
+    return w
+
+
+def _exact_best_pool(remaining, cleared, u, pools, w, n):
+    """Pick the pool that maximizes exact P(r=0 | H) * (new utility)."""
+    total_mass = sum(w[z] for z in remaining)
+    if total_mass == 0:
+        return 0, 0.0
+
+    best_pool, best_score = 0, -1.0
+    for pool in pools:
+        mass_zero = sum(w[z] for z in remaining
+                        if test_result(pool, z) == 0)
+        prob_clear = mass_zero / total_mass
+        gain = sum(u[i] for i in range(n)
+                   if (pool >> i & 1) and not (cleared >> i & 1))
+        score = prob_clear * gain
+        if score > best_score:
+            best_score, best_pool = score, pool
+    return best_pool, best_score
+
+
+def exact_greedy_myopic_expected_utility(p, u, B, G):
+    """Expected utility of myopic greedy that uses EXACT P(r=0|H).
+
+    Same interface as greedy.greedy_myopic_expected_utility, but the
+    per-step pool choice is scored with the exact conditional
+    probability of clearing (read off from the remaining consistent
+    profiles) rather than the product-of-marginals heuristic.
+
+    Note: the recursion here keeps a `remaining` frozenset in the
+    state, so it runs in O(2^n * pool-count * B * reachable-states).
+    Intended for small n <= 8; for larger n use Gibbs-based estimates.
+    """
+    n = len(p)
+    w = _prior_weights_indep(p, n)
+    pools = all_pools(n, G, include_empty=False)
+    all_z = frozenset(range(1 << n))
+    memo = {}
+
+    def recurse(k, remaining, cleared):
+        key = (k, remaining, cleared)
+        if key in memo:
+            return memo[key]
+
+        if k == B or not remaining:
+            util = sum(u[i] for i in range(n) if (cleared >> i & 1))
+            memo[key] = util
+            return util
+
+        pool, score = _exact_best_pool(remaining, cleared, u, pools, w, n)
+        if pool == 0 or score <= 0.0:
+            util = sum(u[i] for i in range(n) if (cleared >> i & 1))
+            memo[key] = util
+            return util
+
+        # Expected value over outcomes r
+        total_mass = sum(w[z] for z in remaining)
+        buckets = {}
+        for z in remaining:
+            r = test_result(pool, z)
+            buckets.setdefault(r, []).append(z)
+
+        ev = 0.0
+        for r, zs in buckets.items():
+            mass_r = sum(w[z] for z in zs)
+            prob_r = mass_r / total_mass
+            new_cleared = cleared | pool if r == 0 else cleared
+            ev += prob_r * recurse(k + 1, frozenset(zs), new_cleared)
+
+        memo[key] = ev
+        return ev
+
+    return recurse(0, all_z, 0)
 
 
 def aggregate(rows):

@@ -1,0 +1,168 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{Arboles de Decision: Construyendo Intuicion\\
+\large (Notebook: large\_trees\_exploration)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este documento explica, paso a paso, como funcionan las estrategias de
+pooled testing usando arboles de decision.
+Empezamos con 2 personas y 1 test, y vamos subiendo hasta 8 personas
+con poblaciones heterogeneas.
+No se cubren aqui los parametros alpha/beta (ver documentos 02 y 03)
+ni las comparaciones con la tesis de Nico (ver documento 03).
+\end{abstract}
+
+%% ====================================================================
+\section{Caso mas simple: 2 personas, 1 test}
+
+Tenemos 2 personas, cada una con probabilidad $p=0.2$ de estar infectada.
+Utilidad $u=1$ por persona aclarada. Solo 1 test disponible.
+
+\textbf{Opcion A:} testear persona 0 sola.
+\begin{itemize}
+  \item Si sale negativo (prob 0.8): aclaramos 1 persona. EU = 0.8.
+  \item Si sale positivo: no aclaramos a nadie.
+\end{itemize}
+
+\textbf{Opcion B:} testear a las 2 juntas (pool).
+\begin{itemize}
+  \item Si $r=0$ (prob $0.8 \times 0.8 = 0.64$): aclaramos a las 2. EU = $0.64 \times 2 = 1.28$.
+  \item Si $r>0$: no aclaramos a nadie.
+\end{itemize}
+
+\textbf{Resultado:} agrupar gana (EU 1.28 vs 0.80) porque con baja prevalencia
+es probable que ambas esten sanas.
+
+%% ====================================================================
+\section{Efecto del valor: utilidades asimetricas}
+
+Misma configuracion pero ahora persona A vale $u_A = 10$, persona B vale $u_B = 1$.
+Ambas con $p = 0.1$.
+
+Cuando una persona vale mucho mas, puede convenir testearla sola
+para no ``desperdiciar'' el test si la otra esta infectada.
+
+Al barrer $u_A$ de 1 a 20, hay un punto de cruce donde individual
+empieza a ganarle al pool.
+
+%% ====================================================================
+\section{Efecto de la prevalencia}
+
+$n=3$, $B=2$, $G=3$. Tres personas iguales ($u=1$), variamos $p$:
+
+\begin{itemize}
+  \item $p=0.05$ (baja): conviene pool grande. Casi seguro todos sanos.
+  \item $p=0.20$ (media): pool sigue ganando, pero con menos margen.
+  \item $p=0.50$ (alta): pools chicos o individuales. Muchos positivos.
+\end{itemize}
+
+\textbf{Regla general:} baja prevalencia $\rightarrow$ pools grandes.
+Alta prevalencia $\rightarrow$ pools chicos.
+
+%% ====================================================================
+\section{Aumentado vs Clasico}
+
+$n=3$, $B=2$, $G=3$, probabilidades $p = [0.2, 0.25, 0.15]$, utilidades $u = [3, 2, 4]$.
+
+\begin{itemize}
+  \item \textbf{Test clasico:} solo dice positivo/negativo (binario).
+  \item \textbf{Test aumentado:} dice \emph{cuantos} infectados hay ($r = 0, 1, 2, \ldots$).
+\end{itemize}
+
+El aumentado da estrictamente mas informacion.
+Permite mejores actualizaciones bayesianas despues de un resultado positivo.
+Por ejemplo, si $r=1$ en un pool de 3, sabemos que exactamente 1 esta infectado.
+El clasico solo sabe que ``al menos 1'' lo esta.
+
+\textbf{Resultado:} aumentado siempre $\geq$ clasico en utilidad esperada.
+
+%% ====================================================================
+\section{Poder del presupuesto}
+
+$n=4$, $G=4$, $p=0.15$, $u=1$. Variamos $B = 1, 2, 3, 4$.
+
+Mas tests $=$ mas oportunidades de aclarar personas.
+La utilidad esperada sube con $B$ pero con rendimientos decrecientes:
+cada test adicional aporta menos que el anterior.
+Con suficientes tests, nos acercamos a $U_{\max}$ (la cota superior si
+supieramos quien esta infectado).
+
+%% ====================================================================
+\section{Por que no testear uno por uno?}
+
+$n=4$, $B=2$, $p=0.15$, $u=1$. Variamos $G = 1, 2, 3, 4$.
+
+$G=1$ obliga a tests individuales: con $B=2$ solo aclaramos 2 personas.
+$G=4$ permite meter a las 4 en un pool: si sale $r=0$, aclaramos a las 4 de golpe.
+
+\textbf{Resultado:} a mayor $G$, mejor EU (cuando la prevalencia es baja).
+Agrupar multiplica el impacto de cada test.
+
+%% ====================================================================
+\section{Poblacion heterogenea: VIPs vs comunes}
+
+$n=8$, $B=3$, $G=3$.
+\begin{itemize}
+  \item 4 VIPs: $p=0.3$, $u=10$ (alto valor, moderada infeccion).
+  \item 4 comunes: $p=0.1$, $u=1$ (bajo valor, baja infeccion).
+\end{itemize}
+
+El optimizador (DP) prioriza aclarar a los VIPs porque valen 10x mas.
+El greedy puede no hacerlo bien porque es miope (solo ve un paso adelante).
+
+Al variar $p_{\text{VIP}}$ de 0.1 a 0.5, el gap greedy--optimo crece:
+a mayor heterogeneidad, mas importa optimizar bien.
+
+%% ====================================================================
+\section{Busqueda binaria como heuristica}
+
+$n=6$, $B=4$, $G=3$, $p=0.15$, $u=10$.
+
+La busqueda binaria es una heuristica natural: testea la mitad, si sale positivo
+subdivide. Pero el DP optimo es mas flexible --- puede elegir pools
+que no son mitades exactas, explotando la informacion del conteo $r$.
+
+Comparacion:
+\begin{itemize}
+  \item DP optimo: mejor EU.
+  \item Greedy: casi tan bueno como DP.
+  \item Busqueda binaria: peor que ambos (no usa info de conteo).
+\end{itemize}
+
+%% ====================================================================
+\section{Greedy vs Optimo: cuanto se pierde?}
+
+Grid de instancias aleatorias: $n \in \{4,5,6\}$, $B \in \{2,3\}$, $G \in \{3,4\}$.
+
+El gap greedy--optimo varia por instancia (0--15\%).
+\textbf{Greedy counting} (usa toda la historia bayesiana) supera a
+\textbf{greedy secuencial} (actualiza test por test).
+
+%% ====================================================================
+\section{Solver hibrido: K pasos greedy + DP}
+
+$n=6$, $B=4$, $G=3$. Variamos $K$ de 0 (todo DP) a $B$ (todo greedy).
+
+\begin{itemize}
+  \item $K=0$: solucion exacta, pero lenta.
+  \item $K=B$: rapido, pero pierde calidad.
+  \item $K=2$--$3$: recupera 80--90\% de la calidad del DP con una fraccion del tiempo.
+\end{itemize}
+
+Este es el enfoque practico: usar greedy para las primeras decisiones
+(donde el espacio es grande) y DP para las ultimas (donde el espacio
+ya se redujo).
+
+\end{document}

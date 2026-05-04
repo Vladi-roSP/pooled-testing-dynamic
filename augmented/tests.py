@@ -915,7 +915,7 @@ def test_gibbs_greedy_vs_counting_eu():
 
 from augmented.independence_gap import (
     exact_pool_pmf, independence_pool_pmf, tv_distance, gap_summary,
-    run_experiment, aggregate,
+    run_experiment, aggregate, exact_greedy_myopic_expected_utility,
 )
 
 
@@ -997,6 +997,25 @@ def test_tv_is_symmetric_and_bounded():
     assert 0.0 <= d <= 1.0
 
 
+def test_exact_greedy_matches_heuristic_on_trivial():
+    # n=1: no correlations possible, exact and heuristic must agree.
+    p = [0.3]
+    u = [1.0]
+    eu_heur = greedy_myopic_expected_utility(p, u, 1, 1)
+    eu_exact = exact_greedy_myopic_expected_utility(p, u, 1, 1)
+    assert abs(eu_heur - eu_exact) < 1e-12
+
+
+def test_exact_greedy_bounded_by_optimal():
+    # The exact-scoring myopic greedy is still a greedy, not optimal.
+    # Its expected utility must be <= optimal on every small instance.
+    p = [0.2, 0.3, 0.4]
+    u = [1.0, 2.0, 1.5]
+    opt, _ = solve_optimal_dapts(p, u, 2, 3)
+    eu_exact = exact_greedy_myopic_expected_utility(p, u, 2, 3)
+    assert eu_exact <= opt + 1e-9, f"exact={eu_exact} > opt={opt}"
+
+
 def test_run_experiment_smoke():
     # Small smoke test: 20 instances, n=6, confirm we get gaps and that
     # some pools exhibit nonzero TV under a nontrivial history.
@@ -1010,6 +1029,95 @@ def test_run_experiment_smoke():
     for size_stats in summary.values():
         assert 0.0 <= size_stats['tv_mean'] <= 1.0
         assert size_stats['tv_max'] >= size_stats['tv_median']
+
+
+# ===================================================================
+# RL examples: value iteration and tabular Q-learning
+# ===================================================================
+
+from augmented.rl_examples import (
+    value_iteration, value_iteration_optimal_value,
+    tabular_q_learning, q_learning_policy_value,
+)
+
+
+def test_vi_matches_dp_small():
+    # n=2, B=1: trivial instance; VI and brute-force DP must agree.
+    p = [0.3, 0.4]
+    u = [1.0, 1.0]
+    opt_dp, _ = solve_optimal_dapts(p, u, 1, 2)
+    opt_vi = value_iteration_optimal_value(p, u, 1, 2)
+    assert abs(opt_dp - opt_vi) < 1e-12, f"DP={opt_dp}, VI={opt_vi}"
+
+
+def test_vi_matches_dp_medium():
+    # n=3, B=2: nontrivial horizon; asserts the MDP formulation is
+    # correct (same Bellman backup as the DP solver).
+    p = [0.2, 0.3, 0.4]
+    u = [1.0, 2.0, 1.5]
+    opt_dp, _ = solve_optimal_dapts(p, u, 2, 3)
+    opt_vi = value_iteration_optimal_value(p, u, 2, 3)
+    assert abs(opt_dp - opt_vi) < 1e-10, f"DP={opt_dp}, VI={opt_vi}"
+
+
+def test_vi_matches_dp_several_randoms():
+    # Stress: random priors, random utilities, small horizon.
+    np.random.seed(42)
+    for _ in range(10):
+        n = np.random.randint(2, 5)
+        B = np.random.randint(1, 3)
+        G = np.random.randint(1, n + 1)
+        p = np.random.uniform(0.05, 0.5, size=n).tolist()
+        u = np.random.uniform(1, 3, size=n).tolist()
+        opt_dp, _ = solve_optimal_dapts(p, u, B, G)
+        opt_vi = value_iteration_optimal_value(p, u, B, G)
+        assert abs(opt_dp - opt_vi) < 1e-9, \
+            f"n={n} B={B} G={G}: DP={opt_dp}, VI={opt_vi}"
+
+
+def test_q_learning_recovers_optimal_tiny():
+    # n=2, B=1: Q-learning with Robbins-Monro α and ε-greedy should
+    # recover V* exactly given enough episodes (the MDP is trivial).
+    p = [0.3, 0.4]
+    u = [1.0, 1.0]
+    opt = value_iteration_optimal_value(p, u, 1, 2)
+    Q = tabular_q_learning(p, u, 1, 2, num_episodes=3000,
+                           epsilon=0.5, seed=0)
+    val = q_learning_policy_value(p, u, 1, 2, Q)
+    assert abs(opt - val) < 1e-9, f"opt={opt}, learned={val}"
+
+
+def test_q_learning_near_optimal_medium():
+    # n=3, B=2: Q-learning across multiple seeds should land close to
+    # V*. Require majority of seeds within 5% of optimum.
+    p = [0.2, 0.3, 0.4]
+    u = [1.0, 2.0, 1.5]
+    opt = value_iteration_optimal_value(p, u, 2, 3)
+
+    passes = 0
+    for seed in range(8):
+        Q = tabular_q_learning(p, u, 2, 3, num_episodes=20000,
+                               epsilon=0.5, seed=seed)
+        val = q_learning_policy_value(p, u, 2, 3, Q)
+        if abs(opt - val) / opt < 0.05:
+            passes += 1
+    assert passes >= 5, f"only {passes}/8 seeds within 5% of optimum"
+
+
+def test_vi_returns_valid_policy():
+    # The policy π must recommend an action for every reachable state.
+    p = [0.3, 0.2, 0.5]
+    u = [1.0, 1.0, 1.0]
+    V, Q, pi = value_iteration(p, u, 2, 2)
+    # Initial state must have a policy entry.
+    n = 3
+    initial = (0, frozenset(range(1 << n)), 0)
+    assert initial in pi
+    # Every state with a policy entry must point to a valid pool.
+    from augmented.core import all_pools
+    pools = set(all_pools(n, 2, include_empty=True))
+    for state, action in pi.items():
+        assert action in pools, f"invalid action {action} at {state}"
 
 
 # ===================================================================
