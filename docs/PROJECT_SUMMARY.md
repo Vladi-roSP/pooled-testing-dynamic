@@ -31,7 +31,8 @@ pooled-testing-dynamic/
 │   ├── comparison.py
 │   ├── example.py
 │   ├── tests.py
-│   └── results.tex
+│   ├── README.md
+│   └── notebooks/
 ├── classical/          ← EXISTING: classical pooled testing (binary +/-)
 │   ├── solvers/
 │   ├── rl_training/
@@ -129,11 +130,11 @@ pooled-testing-dynamic/
 - Compares optimal, myopic greedy, and lookahead greedy.
 - Simulates on a specific infection profile Z = {3} to show step-by-step behavior.
 
-**`augmented/results.tex`** — LaTeX document with computational results
-- Full comparison tables for all 4 instances.
-- Key finding: **augmented benefit is largest when infection rates are high** (+2.74% for Instance 2).
-- Greedy captures 96-100% of the gap between individual testing and optimal.
-- For uniform populations, augmented gives no benefit (symmetry means count doesn't help identify *who* is infected).
+**`augmented/notebooks/`** — Narrative notebooks and generated figures
+- `README.md` lists the recommended reading order.
+- `paper_findings.ipynb` contains the curated paper narrative.
+- `combined_findings.ipynb`, `phase3_findings.ipynb`, and notebooks 05-07 hold the main experiment narratives.
+- LaTeX source and LaTeX build auxiliaries were removed from `augmented/` so GitHub focuses on notebooks, code, figures, data and PDFs.
 
 **`augmented/tests.py`** — 30+ unit tests
 - Tests every component: bitmask helpers, test_result, all_pools, apply_dapts, exact vs MC, baselines, Bayesian updates, greedy, static solvers, classical solver, and the full inequality chain.
@@ -178,4 +179,4 @@ U^single  ≤  U^s_NO  ≤  U^s_O  ≤  U^D  ≤  U^D_A  ≤  U^max
 5. **Reorganized the repo** into classical/ vs augmented/ paradigms
 6. **Created GitHub repo** and pushed: https://github.com/APIEXSmx/pooled-testing-dynamic
 7. **Created Action_Plan.md** with full research briefing
-8. **(Pull from collaborator)** Added 6 new modules: bayesian.py, greedy.py, static_solver.py, classical_solver.py, comparison.py, results.tex — expanding from just the optimal solver to the full comparison framework with all 6 strategies + greedy
+8. **(Pull from collaborator)** Added 5 new modules: bayesian.py, greedy.py, static_solver.py, classical_solver.py, comparison.py — expanding from just the optimal solver to the full comparison framework with all 6 strategies + greedy

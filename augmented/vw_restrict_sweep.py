@@ -1,5 +1,5 @@
 """
-Sweep PWT super-node restriction across multiple regimes (Q3 robustness).
+Sweep VW super-node restriction across multiple regimes (Q3 robustness).
 
 For each regime, draws random priors and utilities of the specified
 shape, runs `run_trial` K times, and reports L_min stats per heuristic.
@@ -11,7 +11,7 @@ heterogeneous utilities, bimodal prevalence).
 import random
 import statistics
 
-from augmented.pwt_restrict import run_trial
+from augmented.vw_restrict import run_trial
 
 
 def _gen_population(n, p_dist, u_dist, rng):

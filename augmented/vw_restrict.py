@@ -1,7 +1,7 @@
 """
-PWT super-node restriction (Q3 from docs/notes/pwt_submodularity.md).
+VW super-node restriction (Q3 from docs/notes/vw_submodularity.md).
 
-Question. The PWT framework enumerates W = {w_T : T ⊆ S, T ≠ ∅}, which is
+Question. The VW framework enumerates W = {w_T : T ⊆ S, T ≠ ∅}, which is
 2^|S|−1 super-nodes. Can we restrict to a top-L subset using a cheap
 ranking heuristic, without losing the optimal pool?
 

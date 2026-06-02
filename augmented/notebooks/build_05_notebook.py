@@ -32,11 +32,22 @@ def code(src):
 # ===================================================================
 # Title & abstract
 # ===================================================================
-md("""# De la heurística de independencia al reinforcement learning
+md("""# Notebook 05 - Heuristica de independencia y RL tabular
 
-*Notebook de resultados para revisión con asesor.*
+**Objetivo.** Explicar cuando falla el producto de marginales y probar si RL
+tabular mejora la politica greedy.
 
-Este notebook junta dos líneas que salieron de las últimas sesiones:
+**Pregunta guia.** Cuanta utilidad se pierde por aproximar el posterior conjunto
+con marginales independientes?
+
+**Lectura esperada.** Las primeras secciones son ejemplos exactos; las ultimas
+comparan heuristica, greedy y RL.
+
+**Formato.** Cada bloque sigue el mismo patron: contexto breve, parametros
+(`n`, `B`, `G`, `p`, `u`), calculo reproducible y salida interpretada cerca del
+codigo.
+
+Este notebook junta dos lineas que salieron de las ultimas sesiones:
 
 1. **La heurística del greedy** — el greedy dinámico puntúa cada pool
    usando `∏(1 - p̃ᵢ)`, lo cual asume que los `Zᵢ` son independientes
@@ -57,7 +68,7 @@ pero a cambio de muchos episodios.
 # ===================================================================
 # Setup
 # ===================================================================
-md("## Setup")
+md("## Setup\n\nImports, path del repo y parametros graficos compartidos.")
 code("""\
 import os, sys, random, time
 import numpy as np

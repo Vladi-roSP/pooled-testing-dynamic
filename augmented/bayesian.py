@@ -204,7 +204,7 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
     """Approximate posterior marginals via Gibbs sampling (MCMC).
 
     Adapted from Appendix A.2 of "Dynamic Welfare-Maximizing Pooled Testing"
-    (Lopez, Marmolejo-Cossío, Tello Ayala, Parkes) for augmented tests where
+    for augmented tests where
     each test returns the exact count r = |t ∩ Z| of infected in the pool.
 
     The algorithm:

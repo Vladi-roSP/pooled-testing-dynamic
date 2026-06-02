@@ -15,8 +15,29 @@ def md(src):
     nb.cells.append(nbf.v4.new_markdown_cell(src))
 
 # ============================================================
-# CELL 0: Setup
+# CELL 0: Title and reading guide
 # ============================================================
+md("""\
+# Notebook 08 - DAPTS paper findings
+
+**Objetivo.** Ordenar los resultados en narrativa de paper, desde intuicion
+hasta robustez y apendices.
+
+**Pregunta guia.** Cuales son los resultados centrales que conviene llevar al
+paper?
+
+**Lectura esperada.** Version curada; usa los links internos para saltar a la
+parte relevante.
+
+**Formato.** Cada bloque sigue el mismo patron: contexto breve, parametros
+(`n`, `B`, `G`, `p`, `u`), calculo reproducible y salida interpretada cerca del
+codigo.
+""")
+
+# ============================================================
+# CELL 1: Setup
+# ============================================================
+md("## Setup\n\nImports, path del repo y parametros graficos compartidos.")
 code("""\
 # === Setup: All imports ===
 import sys, os, time
@@ -98,7 +119,7 @@ print('All imports OK. Ready.')
 # TABLE OF CONTENTS
 # ============================================================
 md("""\
-# DAPTS Paper Notebook — Key Findings
+## Notebook map
 
 1. [Part 1: Intuition](#part1) — 3 examples
 2. [Part 2: Central Benchmark](#part2) — Strategy chain
