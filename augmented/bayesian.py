@@ -199,6 +199,106 @@ def bayesian_update_by_counting(p, history, n):
     return posterior
 
 
+# Subproblemas con <= EXACT_ACTIVE_THRESHOLD agentes activos (tras el
+# preprocesamiento) se resuelven por enumeracion EXACTA sobre el conjunto activo
+# (costo 2^|activos|, independiente de n). Cubre todas las escalas reales del
+# proyecto (el DP exacto topa en n<=14). Por encima de eso se usa MCMC con guard
+# de validez; si el MCMC no junta muestras validas, hay un fallback exacto capado.
+EXACT_ACTIVE_THRESHOLD = 16
+EXACT_ACTIVE_FALLBACK_CAP = 22
+
+
+def _exact_active_marginals(p, remaining_tests, active_list, posterior, n):
+    """Marginales posteriores EXACTAS enumerando solo el conjunto ACTIVO.
+
+    Tras el preprocesamiento, los agentes confirmados ya estan fijos en
+    ``posterior`` (0/1) y los no-activos sin restriccion conservan su prior. La
+    posterior conjunta de los activos es la enumeracion ponderada por el prior
+    sobre las 2^|activos| asignaciones que satisfacen ``remaining_tests`` (cuyos
+    pools/conteos ya estan reducidos al conjunto activo). Costo O(2^A * k),
+    independiente de n, y numericamente identico a la enumeracion completa 2^n.
+    """
+    A = active_list
+    m = len(A)
+    pos = {agent: b for b, agent in enumerate(A)}
+    test_masks = []
+    for eff_pool, eff_r in remaining_tests:
+        bm = 0
+        for agent in A:
+            if eff_pool >> agent & 1:
+                bm |= (1 << pos[agent])
+        test_masks.append((bm, eff_r))
+    pa = [p[agent] for agent in A]
+    qa = [1.0 - p[agent] for agent in A]
+
+    total_w = 0.0
+    infected_w = [0.0] * m
+    for assign in range(1 << m):
+        ok = True
+        for bm, eff_r in test_masks:
+            if (assign & bm).bit_count() != eff_r:
+                ok = False
+                break
+        if not ok:
+            continue
+        w = 1.0
+        for b in range(m):
+            w *= pa[b] if (assign >> b & 1) else qa[b]
+        total_w += w
+        bits = assign
+        while bits:
+            lsb = bits & -bits
+            b = lsb.bit_length() - 1
+            infected_w[b] += w
+            bits ^= lsb
+    if total_w > 0:
+        for b, agent in enumerate(A):
+            posterior[agent] = infected_w[b] / total_w
+    return posterior
+
+
+def _find_valid_state(remaining_tests, active_list, p, rng,
+                      restarts=200, steps=1000):
+    """Busca una asignacion sobre el conjunto activo consistente con TODOS los
+    ``remaining_tests`` (conteos exactos), por busqueda local de minimos
+    conflictos con reinicios. Devuelve {agente: 0/1} o None si no halla una en el
+    presupuesto (la historia se asume factible, asi que normalmente exito rapido).
+    """
+    A = active_list
+    test_members = [[j for j in A if pm >> j & 1] for pm, _ in remaining_tests]
+    targets = [r for _, r in remaining_tests]
+
+    def total_violation(state):
+        return sum(abs(sum(state[j] for j in members) - r)
+                   for members, r in zip(test_members, targets))
+
+    for _ in range(restarts):
+        state = {i: (1 if rng.random() < p[i] else 0) for i in A}
+        v = total_violation(state)
+        for _ in range(steps):
+            if v == 0:
+                return state
+            viol = [t for t in range(len(remaining_tests))
+                    if sum(state[j] for j in test_members[t]) != targets[t]]
+            t = rng.choice(viol)
+            members = test_members[t]
+            cnt = sum(state[j] for j in members)
+            cands = ([j for j in members if state[j] == 1] if cnt > targets[t]
+                     else [j for j in members if state[j] == 0])
+            best_j, best_v = None, None
+            for j in cands:
+                state[j] ^= 1
+                nv = total_violation(state)
+                state[j] ^= 1
+                if best_v is None or nv < best_v:
+                    best_v, best_j = nv, j
+            state[best_j] ^= 1
+            v = total_violation(state)
+        if v == 0:
+            return state
+    return None
+
+
 def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
                  window_size=50, tolerance=1e-4, seed=None):
     """Approximate posterior marginals via Gibbs sampling (MCMC).
@@ -317,10 +417,13 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
 
     active_list = sorted(active_set)
 
-    # Exact counting is cheap for tiny active subproblems and avoids
-    # disconnected-state mixing failures in overlapping exact-count tests.
-    if len(active_list) <= 7:
-        return bayesian_update_by_counting(p, history, n)
+    # Enumeracion EXACTA sobre el conjunto activo (costo 2^|activos|,
+    # independiente de n). Correcto y barato para todas las escalas reales.
+    # Reemplaza el atajo anterior `<=7 -> 2^n`, que (a) no cubria subproblemas
+    # acoplados mas grandes y (b) era O(2^n), por lo que colgaba con n grande aun
+    # con pocos activos.
+    if len(active_list) <= EXACT_ACTIVE_THRESHOLD:
+        return _exact_active_marginals(p, remaining_tests, active_list, posterior, n)
 
     # For each active agent, precompute which tests involve them
     agent_tests = {i: [] for i in active_list}
@@ -329,21 +432,24 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
             if pool_mask >> i & 1:
                 agent_tests[i].append(idx)
 
-    # ---- Step 2: Initialize state consistently ----
-    # Try to find a consistent initial state via constraint satisfaction
-    state = {i: 0 for i in active_list}
-
-    # Greedily assign infected agents to satisfy test counts
-    for pool_mask, r in remaining_tests:
-        pool_agents = [j for j in active_list if pool_mask >> j & 1]
-        current_count = sum(state[j] for j in pool_agents)
-        needed = r - current_count
-        if needed > 0:
-            # Infect agents with highest prior probability first
-            healthy_in_pool = [j for j in pool_agents if state[j] == 0]
-            healthy_in_pool.sort(key=lambda j: p[j], reverse=True)
-            for j in healthy_in_pool[:needed]:
-                state[j] = 1
+    # ---- Step 2: Initialize state to a VALID (consistent) profile ----
+    # El init greedy anterior podia arrancar INVALIDO cuando los pools se
+    # solapan, y un arranque invalido no se reparaba de forma confiable y
+    # contaminaba el estimado. Sembramos con busqueda de minimos conflictos para
+    # que la cadena empiece consistente.
+    state = _find_valid_state(remaining_tests, active_list, p, rng)
+    if state is None:
+        # Fallback: asignacion greedy (puede ser invalida) — el guard de mas
+        # abajo asegura que solo se cuenten muestras validas.
+        state = {i: 0 for i in active_list}
+        for pool_mask, r in remaining_tests:
+            pool_agents = [j for j in active_list if pool_mask >> j & 1]
+            needed = r - sum(state[j] for j in pool_agents)
+            if needed > 0:
+                healthy_in_pool = [j for j in pool_agents if state[j] == 0]
+                healthy_in_pool.sort(key=lambda j: p[j], reverse=True)
+                for j in healthy_in_pool[:needed]:
+                    state[j] = 1
 
     # Helper: check if current state satisfies all test constraints
     def _state_valid():
@@ -454,8 +560,10 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
             else:
                 state[i_inf], state[i_hlt] = 1, 0  # revert invalid swap
 
-        # ---- Step 4: Collect samples after burn-in ----
-        if iteration >= burn_in:
+        # ---- Step 4: Collect samples after burn-in (SOLO estados validos) ----
+        # Guard: nunca contar un estado que viole los conteos observados.
+        # total_samples y la ventana de convergencia avanzan solo en validas.
+        if iteration >= burn_in and _state_valid():
             for i in active_list:
                 if state[i] == 0:
                     healthy_counts[i] += 1
@@ -472,10 +580,17 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
                         break
                 prev_marginals = current_marginals
 
-    # Compute posteriors from samples
+    # Compute posteriors from the collected VALID samples.
     if total_samples > 0:
         for i in active_list:
             posterior[i] = 1.0 - healthy_counts[i] / total_samples
+    elif len(active_list) <= EXACT_ACTIVE_FALLBACK_CAP:
+        # No se junto ninguna muestra valida (p.ej. mala mezcla). Fallback exacto
+        # CAPADO: garantiza correctitud sin arriesgar un cuelgue 2^grande.
+        posterior = _exact_active_marginals(p, remaining_tests, active_list,
+                                            posterior, n)
+    # else: se dejan las confirmaciones deterministas + prior para los activos
+    #       (aproximado, pero de costo acotado; solo para conjuntos activos enormes).
 
     return posterior
 

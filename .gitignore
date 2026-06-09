@@ -38,3 +38,29 @@ augmented/**/*.out
 
 # Local study guides / working notes
 docs/study_guides/
+
+# Notas personales de sesiones (no subir)
+*_personales.md
+
+# Figuras extraidas y dumps de scratch de notebooks (las figuras viven en los .ipynb)
+augmented/notebooks/comp_fig_*.png
+augmented/notebooks/maestro_fig_*.png
+augmented/notebooks/carta_*.png
+augmented/notebooks/fig_*.png
+augmented/notebooks/vw_iter*.png
+augmented/notebooks/_cur_*.png
+augmented/notebooks/*_raw.json
+
+# LaTeX: fuentes .tex y derivados (el PDF compilado si se conserva)
+*.tex
+*.aux
+*.out
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb

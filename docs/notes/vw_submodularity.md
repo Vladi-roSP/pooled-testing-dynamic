@@ -1,14 +1,14 @@
-# PWT and adaptive submodularity — open theoretical question
+# VW and adaptive submodularity — open theoretical question
 
-Companion to `augmented/pwt_demo.py`. Lays out the precise question that
-must be answered before Francisco Marmolejo's PWT super-node framework
-yields a global α-approximation guarantee for Greedy Dynamic.
+Companion to `augmented/vw_demo.py`. Lays out the precise question that
+must be answered before the VW super-node framework yields a global
+α-approximation guarantee for Greedy Dynamic.
 
 ## Setup
 
 - Population N, budget B, max pool size G, prior p, utility u(F, Z).
 - After k tests with covered set S = ∪ pools and history h_k, V = N \ S.
-- PWT instance at step k+1: super-nodes W = {w_T : T ⊆ S}; pool t = U ∪ T
+- VW instance at step k+1: super-nodes W = {w_T : T ⊆ S}; pool t = U ∪ T
   with U ⊆ V, T ⊆ S, |U|+|T| ≤ G.
 - Per-step value (proper, contextual):
   ```
@@ -21,9 +21,9 @@ yields a global α-approximation guarantee for Greedy Dynamic.
   V_greedy(p, B, G)  =  E_{traj} Σ_{k=0}^{B-1} F_{h_k}(T_{k+1}, U_{k+1})
   ```
 
-## What "scalar PWT" gives empirically (from the demo)
+## What "scalar VW" gives empirically (from the demo)
 
-- prob_A = ∏_{i∈T}(1−p_i), util_T = Σ u_i, weight = |T| → scalar PWT
+- prob_A = ∏_{i∈T}(1−p_i), util_T = Σ u_i, weight = |T| → scalar VW
   reproduces the standard myopic-greedy step value EXACTLY.
 - prob_B = OR-event → strictly worse on this objective.
 - Neither captures r > 0 information; both lose strictly to F_h(T, U) on
@@ -45,7 +45,7 @@ e ∉ dom(ψ),  E[f(dom(ψ) ∪ {e}, Φ) | ψ] ≥ E[f(dom(ψ), Φ) | ψ].
 If both hold and the per-step greedy choice is α-approximate, then
 adaptive greedy is (1 − e^{−α})-optimal.
 
-## Where PWT runs into trouble
+## Where VW runs into trouble
 
 1. **f is not "selection of items".** A pool is a set of size ≤ G picked
    in one shot, not items selected sequentially within a step. The
@@ -92,12 +92,12 @@ choice by G atomic "add-individual" choices — does the resulting
 sequential problem satisfy AS?
 
 **Q3.** If Q2 holds, what is the per-step approximation factor for
-PWT-style enumeration of W? Naive enumeration is exact (= myopic
+VW-style enumeration of W? Naive enumeration is exact (= myopic
 optimum), so α = 1, but the complexity is 2^|S|. Is there a constant α
 enumeration with poly(|S|) complexity?
 
-**Q3 — empirical evidence (see `augmented/pwt_restrict.py`,
-`augmented/pwt_restrict_sweep.py`).**
+**Q3 — empirical evidence (see `augmented/vw_restrict.py`,
+`augmented/vw_restrict_sweep.py`).**
 
 A second heuristic, **`partner`**, dominates `self_score` in 4 of 6
 regimes and stays ≤ 3 in mean L_min everywhere. It is
@@ -169,7 +169,7 @@ break harder). Worst case remains a concern: max L_min can reach
 **average-case** restriction but **no worst-case bound**.
 
 **What this resolves and what it does not.**
-- ✅ Resolves: PWT enumeration is computationally practical in
+- ✅ Resolves: VW enumeration is computationally practical in
   expectation. Sort by self_score (O(|S|·2^|S|), but constant-time per
   candidate) and keep top L ≈ 0.05–0.15·|W|.
 - ❌ Does not resolve: a worst-case bound on L_min. An adversarial
@@ -193,7 +193,7 @@ summaries coincide — this is exactly where AS could break.
 ## Verdict and next step
 
 The empirical demo establishes:
-- PWT scalar (with prob_A) ≡ myopic greedy. No algorithmic improvement.
+- VW scalar (with prob_A) ≡ myopic greedy. No algorithmic improvement.
 - Closing the lookahead gap requires the count PMF of w_T, at which
   point the formulation is no longer "scalar super-node" but full pool
   enumeration with proper joint posterior — i.e., the existing DP.
@@ -201,12 +201,12 @@ The empirical demo establishes:
 For the framework to deliver theoretical value, **the right line of
 attack is Q4**: prove (or refute) that the count-augmented adaptive
 greedy on g_h satisfies Golovin–Krause AS. If yes, an (1 − e^{−α})
-guarantee follows. If no, PWT is at best a re-formulation, not a
+guarantee follows. If no, VW is at best a re-formulation, not a
 guarantee-yielding reduction.
 
 Concretely: the next paper-level task is to either (a) derive AS for
 g_h with count observations under independent prior, or (b) construct
 a counterexample where AS fails — a small instance where adaptive
-greedy with PWT enumeration does worse than (1 − 1/e) of OPT. The
+greedy with VW enumeration does worse than (1 − 1/e) of OPT. The
 demo's contraejemplo (T₁, T₂ with same OR but different PMF) is the
 seed of such a counterexample if extended to a multi-step instance.
