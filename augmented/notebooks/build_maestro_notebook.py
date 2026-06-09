@@ -51,10 +51,8 @@ def main():
 
     cells = [nbf.v4.new_markdown_cell(PORTADA), nbf.v4.new_code_cell(SETUP)]
     for c in cards:
-        head = _u(c.get("setup_md")) or _u(c.get("title"))
-        if _u(c.get("title")) and _u(c.get("title")) not in head:
-            head = _u(c.get("title")) + "\n\n" + head
-        cells.append(nbf.v4.new_markdown_cell(head.strip()))
+        head = (_u(c.get("setup_md")) or _u(c.get("title"))).strip()
+        cells.append(nbf.v4.new_markdown_cell(head))
         src = _u(c.get("code")).strip()
         if src:
             cells.append(nbf.v4.new_code_cell(src))
