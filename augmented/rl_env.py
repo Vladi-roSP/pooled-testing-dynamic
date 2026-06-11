@@ -192,21 +192,35 @@ class DaptsBucketEnv(gym.Env):
     metadata = {"render_modes": []}
 
     def __init__(self, instance_sampler, B, G, N,
-                 health_bins=4, utility_bins=3):
+                 health_bins=4, utility_bins=3, utility_high=3.0):
         super().__init__()
         self.instance_sampler = instance_sampler
         self.B, self.G, self.N = B, G, N
         self.health_bins = health_bins
         self.utility_bins = utility_bins
+        self.utility_high = float(utility_high)
         self.num_categories = health_bins * utility_bins
 
+        # Per-dimension bounds: the first num_categories entries are agent counts
+        # (<= N); the last two are usum (sum of selected utilities, which can
+        # reach G*utility_high and so EXCEED N) and hprod in [0,1]. Declaring a
+        # flat high=N truncated the observation, silently corrupting the state.
+        high = np.empty(self.num_categories + 2, dtype=np.float32)
+        high[:self.num_categories] = float(N)
+        high[self.num_categories] = float(G) * self.utility_high  # usum
+        high[self.num_categories + 1] = 1.0                       # hprod
         self.observation_space = spaces.Box(
-            low=0.0, high=float(N),
+            low=0.0, high=high,
             shape=(self.num_categories + 2,), dtype=np.float32)
         self.action_space = spaces.Discrete(self.num_categories + 1)
 
         self.health_bin_edges = np.linspace(0.0, 1.0, health_bins + 1)
-        self.utility_bin_edges = np.array([0, 2, 3])
+        # Full edges of a uniform partition of [0, utility_high] into exactly
+        # utility_bins bins (same convention as health_bin_edges, consumed by
+        # _category via digitize-1). Honors the utility_bins arg instead of the
+        # old hardcoded [0,2,3] that silently fixed it at 3 bins over {1,2,3}.
+        self.utility_bin_edges = np.linspace(0.0, self.utility_high,
+                                             utility_bins + 1)
 
         self.p = self.u = None
         self.category_agents = {}
