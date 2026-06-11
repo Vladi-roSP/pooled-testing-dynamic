@@ -158,6 +158,64 @@ def test_find_best_instances_handles_score_ties():
     assert all(abs(t[0]) < 1e-12 for t in top)
 
 
+# ===================================================================
+# Fix #3: bayesian_update_by_counting silently returned the prior when NO
+# profile was consistent with the history (total_weight==0), masking bugs.
+# It must raise instead.
+# ===================================================================
+
+def test_counting_raises_on_infeasible_history():
+    from augmented.bayesian import bayesian_update_by_counting
+    p = [0.3, 0.4]
+    pool = mask_from_indices([0, 1])
+    history = ((pool, 0), (pool, 1))  # contradictory: count is both 0 and 1
+    raised = False
+    try:
+        bayesian_update_by_counting(p, history, 2)
+    except ValueError:
+        raised = True
+    assert raised, "expected ValueError on infeasible history, got silent prior"
+
+
+def test_counting_feasible_history_still_works():
+    from augmented.bayesian import bayesian_update_by_counting
+    p = [0.3, 0.4, 0.5]
+    history = ((mask_from_indices([0, 1]), 1),)  # exactly one of {0,1} infected
+    post = bayesian_update_by_counting(p, history, 3)
+    assert len(post) == 3 and all(0.0 <= x <= 1.0 for x in post)
+    assert abs(post[2] - 0.5) < 1e-12  # individual 2 untouched by the test
+
+
+# ===================================================================
+# Fix #2: a deduced-healthy individual (posterior p_i ~ 0) was filtered out of
+# all future pools, so its utility could never be harvested (it can only be
+# credited by being placed in a guaranteed-r=0 pool). The greedy must keep the
+# option to harvest it, closing a genuine gap to the optimum.
+# ===================================================================
+
+def test_known_healthy_individuals_are_harvested():
+    from augmented.greedy import greedy_myopic_counting_expected_utility
+    from augmented.solver import solve_optimal_dapts
+    p = [0.23, 0.44, 0.42]
+    u = [1.0, 50.0, 50.0]
+    B, G = 3, 2
+    eu = greedy_myopic_counting_expected_utility(p, u, B, G)
+    opt, _ = solve_optimal_dapts(p, u, B, G)
+    # Filtered (buggy) value was ~46.01; correct harvesting value is ~57.59,
+    # close to the optimum ~57.77.
+    assert eu > 57.0, f"counting-greedy EU={eu:.4f} — filter still dropping utility?"
+    assert eu <= opt + 1e-9, f"EU={eu:.4f} > opt={opt:.4f}"
+
+
+def test_eu_still_equals_simulation_after_harvest_fix():
+    # Internal consistency must survive the policy change: EU == simulation.
+    p = [0.23, 0.44, 0.42]
+    u = [1.0, 50.0, 50.0]
+    eu = greedy_myopic_counting_expected_utility(p, u, 3, 2)
+    truth = _true_policy_eu(greedy_myopic_counting_simulate, p, u, 3, 2)
+    assert abs(eu - truth) < 1e-9, f"EU {eu:.6f} != truth {truth:.6f}"
+
+
 def _run_all():
     import traceback
     tests = [v for k, v in sorted(globals().items())

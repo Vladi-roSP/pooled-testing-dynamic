@@ -193,11 +193,18 @@ def bayesian_update_by_counting(p, history, n):
             infected_weight[i] += w
             bits ^= lsb
 
-    # Compute posteriors
-    posterior = list(p)  # fallback to prior if degenerate
-    if total_weight > 0:
-        for i in range(n):
-            posterior[i] = infected_weight[i] / total_weight
+    # Compute posteriors. total_weight==0 means NO infection profile is
+    # consistent with the history (or all consistent profiles have zero prior
+    # probability). Returning the prior here would silently hide a bug, so raise.
+    if total_weight <= 0.0:
+        raise ValueError(
+            "bayesian_update_by_counting: infeasible history — no infection "
+            "profile is consistent with it (or all have zero prior mass). "
+            "Refusing to silently return the prior."
+        )
+    posterior = list(p)
+    for i in range(n):
+        posterior[i] = infected_weight[i] / total_weight
 
     return posterior
 

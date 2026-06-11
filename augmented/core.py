@@ -49,7 +49,8 @@ def all_pools(n, G, include_empty=True):
     return pools
 
 
-def compute_active_mask(p, cleared_mask, n, threshold=1e-10):
+def compute_active_mask(p, cleared_mask, n, threshold=1e-10,
+                        include_known_healthy=False):
     """Bitmask of individuals whose infection status is still uncertain.
 
     An individual is *inactive* (excluded from future pools) if:
@@ -58,17 +59,32 @@ def compute_active_mask(p, cleared_mask, n, threshold=1e-10):
       - p_i >= 1 - threshold (essentially confirmed infected).
 
     Returns (active_mask, confirmed_infected_mask).
+
+    Parameters
+    ----------
+    include_known_healthy : bool
+        If True, individuals deduced healthy (p_i <= threshold) but not yet
+        CLEARED are kept in the active mask. This matters because utility is
+        only credited when an individual is physically placed in a pool that
+        returns r=0 (see the welfare objective): a deduced-healthy individual
+        carries zero risk (it never raises the count) yet still owns utility
+        u_i that can only be harvested by testing it in a guaranteed-r=0 pool.
+        Filtering it out forfeits u_i forever — a genuine sub-optimality the
+        DP avoids. Greedy pool-selectors pass True; the default stays False to
+        preserve the contract for other callers.
     """
     active = 0
     confirmed_infected = 0
     for i in range(n):
         if cleared_mask >> i & 1:
-            continue  # already cleared
+            continue  # already cleared — utility already collected
         if p[i] <= threshold:
+            if include_known_healthy:
+                active |= 1 << i  # zero-risk; still harvestable for its u_i
             continue  # known healthy
         if p[i] >= 1.0 - threshold:
             confirmed_infected |= 1 << i
-            continue  # confirmed infected
+            continue  # confirmed infected — would force r>=1, never cleared
         active |= 1 << i
     return active, confirmed_infected
 

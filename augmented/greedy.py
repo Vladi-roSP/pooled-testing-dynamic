@@ -36,7 +36,11 @@ def _myopic_best_pool(p, u, G, n, cleared_mask, use_filtering=True):
     (those not yet cleared and not confirmed infected).
     """
     if use_filtering:
-        active_mask, _ = compute_active_mask(p, cleared_mask, n)
+        # Keep deduced-healthy (zero-risk) individuals eligible so the greedy
+        # can harvest their utility in a guaranteed-r=0 pool instead of
+        # forfeiting it (only confirmed-infected and already-cleared are dropped).
+        active_mask, _ = compute_active_mask(p, cleared_mask, n,
+                                             include_known_healthy=True)
         if active_mask == 0:
             return 0  # no uncertain individuals left
         pools = all_pools_from_mask(active_mask, G, include_empty=False)
