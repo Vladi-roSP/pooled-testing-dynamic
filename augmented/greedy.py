@@ -23,6 +23,25 @@ from augmented.bayesian import (bayesian_update_single_test,
                                 _poisson_binomial_pmf)
 
 
+# Above this population size the exact branch distribution P(r|history)
+# (exact_pool_pmf enumerates 2^n profiles) is infeasible, so the expected-utility
+# recursions fall back to the Poisson-Binomial of the current posterior
+# marginals. The exact path covers the regime where these functions claim an
+# exact value (the paper lives at n<=14, well inside this bound); beyond it the
+# true expected utility is itself intractable and only an approximation is
+# possible. 18 keeps 2^n enumeration cheap (~262k) while spanning every exact use.
+EXACT_PMF_MAX_N = 18
+
+
+def _branch_pmf(prior, history, current_p, pool, pool_idx, n):
+    """Outcome distribution P(r | history) used to weight the EU recursion's
+    branches: exact (over consistent profiles) when n is small enough, else the
+    Poisson-Binomial of the posterior marginals."""
+    if n <= EXACT_PMF_MAX_N:
+        return exact_pool_pmf(prior, history, pool, n)
+    return _poisson_binomial_pmf([current_p[i] for i in pool_idx])
+
+
 # -------------------------------------------------------------------
 # Myopic greedy: maximize immediate expected gain
 # -------------------------------------------------------------------
@@ -129,9 +148,10 @@ def greedy_myopic_expected_utility(p, u, B, G, pool_selector=None):
 
         pool_idx = indices_from_mask(pool, n)
         # Pool SELECTION uses the sequential single-test marginals (that is the
-        # policy), but the outcome BRANCHES must be weighted by the exact
-        # P(r | history) so this equals the true value of greedy_myopic_simulate.
-        pmf = exact_pool_pmf(prior, history, pool, n)
+        # policy), but the outcome BRANCHES are weighted by P(r | history) ---
+        # exact when feasible (then this equals the true value of
+        # greedy_myopic_simulate), Poisson-Binomial fallback at large n.
+        pmf = _branch_pmf(prior, history, current_p, pool, pool_idx, n)
 
         ev = 0.0
         for r in range(len(pool_idx) + 1):
@@ -364,10 +384,12 @@ def greedy_myopic_gibbs_expected_utility(p, u, B, G,
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
         pool_idx = indices_from_mask(pool, n)
-        # Branch weights must be the EXACT outcome distribution P(r | history)
-        # under the prior, NOT the Poisson-Binomial of the posterior marginals
-        # (which assumes independence that conditioning on history destroys).
-        pmf = exact_pool_pmf(prior_p, history, pool, n)
+        # Branch weights are the outcome distribution P(r | history): exact over
+        # consistent profiles when feasible (NOT the Poisson-Binomial of the
+        # posterior marginals, which assumes an independence that conditioning on
+        # history destroys), with a Poisson-Binomial fallback at large n where
+        # exact enumeration (and the true EU itself) is intractable.
+        pmf = _branch_pmf(prior_p, history, current_p, pool, pool_idx, n)
 
         ev = 0.0
         for r in range(len(pool_idx) + 1):
@@ -408,10 +430,12 @@ def greedy_myopic_counting_expected_utility(p, u, B, G, pool_selector=None):
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
         pool_idx = indices_from_mask(pool, n)
-        # Branch weights must be the EXACT outcome distribution P(r | history)
-        # under the prior, NOT the Poisson-Binomial of the posterior marginals
-        # (which assumes independence that conditioning on history destroys).
-        pmf = exact_pool_pmf(prior_p, history, pool, n)
+        # Branch weights are the outcome distribution P(r | history): exact over
+        # consistent profiles when feasible (NOT the Poisson-Binomial of the
+        # posterior marginals, which assumes an independence that conditioning on
+        # history destroys), with a Poisson-Binomial fallback at large n where
+        # exact enumeration (and the true EU itself) is intractable.
+        pmf = _branch_pmf(prior_p, history, current_p, pool, pool_idx, n)
 
         ev = 0.0
         for r in range(len(pool_idx) + 1):
