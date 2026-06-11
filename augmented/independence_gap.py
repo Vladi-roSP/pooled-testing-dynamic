@@ -39,6 +39,7 @@ from augmented.core import (
 from augmented.bayesian import (
     bayesian_update_by_counting,
     _poisson_binomial_pmf,
+    exact_pool_pmf,
 )
 from augmented.greedy import greedy_myopic_simulate
 
@@ -46,42 +47,6 @@ from augmented.greedy import greedy_myopic_simulate
 # -------------------------------------------------------------------
 # Core quantities
 # -------------------------------------------------------------------
-
-def exact_pool_pmf(p, history, pool_mask, n):
-    """Exact posterior PMF of r_t = |t ∩ Z| given history H.
-
-    Enumerates all 2^n profiles, restricts to those consistent with H,
-    and aggregates prior weights by the outcome r_t they produce.
-
-    Returns a list of length popcount(pool_mask)+1 where entry k is
-    P(r_t = k | H). If no profile is consistent with the history, the
-    returned PMF has total mass 0 (degenerate; caller can skip).
-    """
-    q = [1.0 - pi for pi in p]
-    m = popcount(pool_mask)
-    pmf = [0.0] * (m + 1)
-    total = 0.0
-
-    for z in range(1 << n):
-        ok = True
-        for t, r in history:
-            if test_result(t, z) != r:
-                ok = False
-                break
-        if not ok:
-            continue
-
-        w = 1.0
-        for i in range(n):
-            w *= p[i] if (z >> i & 1) else q[i]
-
-        pmf[test_result(pool_mask, z)] += w
-        total += w
-
-    if total > 0:
-        pmf = [v / total for v in pmf]
-    return pmf
-
 
 def independence_pool_pmf(p, history, pool_mask, n, marginals=None):
     """Product-of-marginals PMF for r_t.

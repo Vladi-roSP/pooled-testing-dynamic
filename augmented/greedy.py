@@ -19,6 +19,7 @@ from augmented.core import (all_pools, all_pools_from_mask, compute_active_mask,
 from augmented.bayesian import (bayesian_update_single_test,
                                 bayesian_update_by_counting,
                                 gibbs_update,
+                                exact_pool_pmf,
                                 _poisson_binomial_pmf)
 
 
@@ -109,8 +110,9 @@ def greedy_myopic_expected_utility(p, u, B, G, pool_selector=None):
         to select the pool at each step.  Defaults to _myopic_best_pool.
     """
     n = len(p)
+    prior = list(p)
 
-    def recurse(current_p, b, cleared_mask):
+    def recurse(current_p, history, b, cleared_mask):
         if b == 0:
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
@@ -122,7 +124,10 @@ def greedy_myopic_expected_utility(p, u, B, G, pool_selector=None):
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
         pool_idx = indices_from_mask(pool, n)
-        pmf = _poisson_binomial_pmf([current_p[i] for i in pool_idx])
+        # Pool SELECTION uses the sequential single-test marginals (that is the
+        # policy), but the outcome BRANCHES must be weighted by the exact
+        # P(r | history) so this equals the true value of greedy_myopic_simulate.
+        pmf = exact_pool_pmf(prior, history, pool, n)
 
         ev = 0.0
         for r in range(len(pool_idx) + 1):
@@ -130,10 +135,11 @@ def greedy_myopic_expected_utility(p, u, B, G, pool_selector=None):
                 continue
             new_p = bayesian_update_single_test(current_p, pool, r, n)
             new_cleared = cleared_mask | pool if r == 0 else cleared_mask
-            ev += pmf[r] * recurse(new_p, b - 1, new_cleared)
+            new_history = history + ((pool, r),)
+            ev += pmf[r] * recurse(new_p, new_history, b - 1, new_cleared)
         return ev
 
-    return recurse(list(p), B, 0)
+    return recurse(list(p), (), B, 0)
 
 
 # -------------------------------------------------------------------
@@ -354,7 +360,10 @@ def greedy_myopic_gibbs_expected_utility(p, u, B, G,
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
         pool_idx = indices_from_mask(pool, n)
-        pmf = _poisson_binomial_pmf([current_p[i] for i in pool_idx])
+        # Branch weights must be the EXACT outcome distribution P(r | history)
+        # under the prior, NOT the Poisson-Binomial of the posterior marginals
+        # (which assumes independence that conditioning on history destroys).
+        pmf = exact_pool_pmf(prior_p, history, pool, n)
 
         ev = 0.0
         for r in range(len(pool_idx) + 1):
@@ -395,7 +404,10 @@ def greedy_myopic_counting_expected_utility(p, u, B, G, pool_selector=None):
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
         pool_idx = indices_from_mask(pool, n)
-        pmf = _poisson_binomial_pmf([current_p[i] for i in pool_idx])
+        # Branch weights must be the EXACT outcome distribution P(r | history)
+        # under the prior, NOT the Poisson-Binomial of the posterior marginals
+        # (which assumes independence that conditioning on history destroys).
+        pmf = exact_pool_pmf(prior_p, history, pool, n)
 
         ev = 0.0
         for r in range(len(pool_idx) + 1):

@@ -199,6 +199,46 @@ def bayesian_update_by_counting(p, history, n):
     return posterior
 
 
+def exact_pool_pmf(p, history, pool_mask, n):
+    """Exact posterior PMF of r_t = |t ∩ Z| given history H.
+
+    Enumerates all 2^n profiles, restricts to those consistent with H, and
+    aggregates prior weights by the outcome r_t they produce. Returns a list of
+    length popcount(pool_mask)+1 where entry k is P(r_t = k | H). If no profile
+    is consistent with the history, the returned PMF has total mass 0.
+
+    This is the CORRECT branch-weight distribution for evaluating the expected
+    utility of a counting/gibbs greedy policy: after conditioning on H the joint
+    posterior over (Z_i)_{i in t} is correlated, so the Poisson-Binomial of the
+    posterior MARGINALS is NOT the true distribution of r_t (it can put positive
+    mass on impossible counts and mis-weight the recursion).
+    """
+    q = [1.0 - pi for pi in p]
+    m = popcount(pool_mask)
+    pmf = [0.0] * (m + 1)
+    total = 0.0
+
+    for z in range(1 << n):
+        ok = True
+        for t, r in history:
+            if test_result(t, z) != r:
+                ok = False
+                break
+        if not ok:
+            continue
+
+        w = 1.0
+        for i in range(n):
+            w *= p[i] if (z >> i & 1) else q[i]
+
+        pmf[test_result(pool_mask, z)] += w
+        total += w
+
+    if total > 0:
+        pmf = [v / total for v in pmf]
+    return pmf
+
+
 # Subproblemas con <= EXACT_ACTIVE_THRESHOLD agentes activos (tras el
 # preprocesamiento) se resuelven por enumeracion EXACTA sobre el conjunto activo
 # (costo 2^|activos|, independiente de n). Cubre todas las escalas reales del
