@@ -1,5 +1,8 @@
 """Tests for tree_visualizer module."""
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import graphviz
 from augmented.solver import solve_optimal_dapts
 from augmented.tree_extractor import extract_tree

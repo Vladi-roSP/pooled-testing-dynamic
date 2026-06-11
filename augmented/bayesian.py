@@ -150,9 +150,12 @@ def bayesian_update_by_counting(p, history, n):
     Notes
     -----
     Complexity: O(2^n * k) where k = len(history).
-    Feasible for n <= ~20. For independent priors, this gives the same
-    result as sequential Bayesian updates but makes the joint computation
-    explicit and transparent.
+    Feasible for n <= ~20. This is the EXACT joint posterior. It coincides
+    with sequential single-test updates (`bayesian_update`) only when the
+    tested pools are pairwise disjoint; with OVERLAPPING pools the two differ,
+    because the sequential update treats marginals as independent and so misses
+    the cross-test deductions that counting captures (e.g. tests {0,1}=1 and
+    {1,2}=0 force individual 0 infected — counting sees it, sequential does not).
     """
     if not history:
         return list(p)

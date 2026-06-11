@@ -242,7 +242,10 @@ def find_best_instances(all_results, metric='augmented_benefit', top_k=5):
                     score = (res['U_D_A'] - res['U_greedy']) / res['U_D_A'] * 100
                     scored.append((score, inst, res, regime_name))
 
-    scored.sort(reverse=True)
+    # Sort by score only: the tuples also carry a result dict, so comparing
+    # whole tuples crashes on a score+inst tie. Python's sort is stable, so ties
+    # keep insertion order (deterministic).
+    scored.sort(key=lambda t: t[0], reverse=True)
     return scored[:top_k]
 
 

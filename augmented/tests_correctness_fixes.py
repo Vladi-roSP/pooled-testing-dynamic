@@ -98,6 +98,66 @@ def test_sequential_eu_equals_policy_simulation():
             )
 
 
+# ===================================================================
+# Fix #4: mosek/gurobi imports were placed BEFORE the try block, so an
+# ImportError (no license / not installed) propagated instead of falling back
+# to _heuristic_best_pool. The fallback must work when the backend is absent.
+# ===================================================================
+
+def _force_import_error(modname):
+    """Context-manager-ish: returns (restore_fn) after blocking `modname`."""
+    saved = sys.modules.get(modname, '__absent__')
+    sys.modules[modname] = None  # makes `from modname import X` raise ImportError
+
+    def restore():
+        if saved == '__absent__':
+            sys.modules.pop(modname, None)
+        else:
+            sys.modules[modname] = saved
+    return restore
+
+
+def _check_solver_fallback(solver_fn, blocked_module):
+    from augmented.pool_solvers import _heuristic_best_pool
+    from augmented.core import compute_active_mask, indices_from_mask
+    p = [0.2, 0.3, 0.4]
+    u = [1.0, 2.0, 1.5]
+    G, n, cleared = 2, 3, 0
+    restore = _force_import_error(blocked_module)
+    try:
+        pool = solver_fn(p, u, G, n, cleared)
+    finally:
+        restore()
+    active_mask, _ = compute_active_mask(p, cleared, n)
+    expected = _heuristic_best_pool(indices_from_mask(active_mask, n), p, u, G)
+    assert pool == expected, f"{solver_fn.__name__}: got {pool}, want {expected}"
+
+
+def test_mosek_falls_back_to_heuristic_when_unavailable():
+    from augmented.pool_solvers import mosek_best_pool
+    _check_solver_fallback(mosek_best_pool, 'mosek.fusion')
+
+
+def test_gurobi_falls_back_to_heuristic_when_unavailable():
+    from augmented.pool_solvers import gurobi_best_pool
+    _check_solver_fallback(gurobi_best_pool, 'gurobipy')
+
+
+# ===================================================================
+# Fix #5: find_best_instances sorted tuples that contain result dicts; on a
+# score+inst tie Python tried to compare the dicts -> TypeError. Sort by score.
+# ===================================================================
+
+def test_find_best_instances_handles_score_ties():
+    from augmented.experiments import find_best_instances
+    res_a = {'U_D': 1.0, 'U_D_A': 1.0, 'tag': 'a'}
+    res_b = {'U_D': 2.0, 'U_D_A': 2.0, 'tag': 'b'}
+    all_results = {'r1': [(0, res_a)], 'r2': [(0, res_b)]}  # tie: score 0.0, inst 0
+    top = find_best_instances(all_results, metric='augmented_benefit', top_k=5)
+    assert len(top) == 2
+    assert all(abs(t[0]) < 1e-12 for t in top)
+
+
 def _run_all():
     import traceback
     tests = [v for k, v in sorted(globals().items())

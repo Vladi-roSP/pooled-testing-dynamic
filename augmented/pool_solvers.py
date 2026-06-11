@@ -39,10 +39,6 @@ def mosek_best_pool(p, u, G, n, cleared_mask):
 
     Returns pool bitmask (0 if no useful pool).
     """
-    from mosek.fusion import (
-        Model, Domain, Expr, ObjectiveSense, Var, SolutionStatus,
-    )
-
     # Identify active individuals
     active_mask, _ = compute_active_mask(p, cleared_mask, n)
     active_indices = indices_from_mask(active_mask, n)
@@ -68,6 +64,11 @@ def mosek_best_pool(p, u, G, n, cleared_mask):
     EPS = 1e-8
 
     try:
+        # Import inside the try so a missing backend / license falls back to the
+        # heuristic instead of raising (active_indices is already computed above).
+        from mosek.fusion import (
+            Model, Domain, Expr, ObjectiveSense, Var, SolutionStatus,
+        )
         with Model('mosek_pool') as M:
             M.setSolverParam("log", "0")
             M.setSolverParam("mioMaxTime", 30.0)
@@ -138,9 +139,6 @@ def gurobi_best_pool(p, u, G, n, cleared_mask):
 
     Returns pool bitmask (0 if no useful pool).
     """
-    import gurobipy as gp
-    from gurobipy import GRB
-
     # Identify active individuals
     active_mask, _ = compute_active_mask(p, cleared_mask, n)
     active_indices = indices_from_mask(active_mask, n)
@@ -164,6 +162,10 @@ def gurobi_best_pool(p, u, G, n, cleared_mask):
     U_max = G * max(active_u)
 
     try:
+        # Import inside the try so a missing backend / license falls back to the
+        # heuristic instead of raising (active_indices is already computed above).
+        import gurobipy as gp
+        from gurobipy import GRB
         with gp.Env(empty=True) as env:
             env.setParam('OutputFlag', 0)
             env.start()
