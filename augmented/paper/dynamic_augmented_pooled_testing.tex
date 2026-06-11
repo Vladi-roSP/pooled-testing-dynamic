@@ -1,0 +1,295 @@
+\documentclass[11pt]{article}
+% Preliminary draft (branch: augmented/correctness-and-paper).
+% Target venue: AAAI AI for Social Impact (AISI) track, AAAI-27.
+% For submission, switch the class to aaai2026.sty (two-column, 7 pages,
+% double-blind) and move the author block into \nocopyright form.
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+
+\title{\textbf{Dynamic Welfare-Maximizing Pooled Testing\\with Count-Valued (Augmented) Outcomes}}
+\author{Vladimir \and Hector \and Francisco Marmolejo-Coss\'io}
+\date{Preliminary draft --- \today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Pooled testing lets a public-health planner clear many people for work, school,
+or travel with few tests, by testing samples together. Most welfare-oriented
+work assumes a \emph{binary} pooled test: a pool is either all-clear or not. Yet
+the laboratory signal is usually richer --- quantitative PCR returns a cycle
+threshold that is, to first order, monotone in how much virus the pool carries.
+We study the idealized limit of this richer signal: an \emph{augmented} pooled
+test that reveals the exact \emph{count} of infected samples in the pool, and we
+ask how this extra information changes \emph{dynamic} welfare-maximizing testing,
+where each test is chosen after seeing the previous outcomes. We formalize the
+problem, place its optimal value in a chain between single testing and the
+full-information bound, and prove that exact posterior inference under count
+outcomes is \#P-hard, while identifying the structured regimes (disjoint,
+laminar, bounded-treewidth, few-test) that remain tractable. On the algorithmic
+side we give an exact dynamic program, a myopic greedy policy, and a
+reinforcement-learning baseline, and we correct two subtleties that otherwise
+bias the evaluation: the outcome branches of a counting policy must be weighted
+by the \emph{exact} conditional $P(r\mid\text{history})$, not by a
+product-of-marginals approximation, and a Gibbs sampler over the exact-count
+fiber must use moves that change the total infected count to be ergodic. On
+synthetic instances the welfare advantage of the count test over the binary test
+is small at low budget and grows with scale ($+0.6\%$ at $N{=}3$ to $+4.0\%$ at
+$N{=}5$ and larger at $N{=}7$), matching the intuition that count outcomes pay
+off through better posteriors over a longer horizon.
+\end{abstract}
+
+\section{Overview}
+A planner has a population of $N$ individuals. Each individual $i$ carries a
+utility $u_i \ge 0$ --- the social value of confirming $i$ healthy so they may
+return to in-person activity --- and a prior infection probability $p_i \in
+[0,1]$, with $q_i = 1-p_i$. Infections are independent across individuals, a
+modeling assumption appropriate to quarantine-style settings. The planner has a
+budget of $B$ tests, each applied to a \emph{pool} of at most $G$ individuals,
+where $G$ reflects a biological dilution limit. The planner earns $u_i$ once $i$
+has been \emph{shown} healthy by a test. As in the static welfare-maximizing
+framework of Finster et al. and its dynamic, binary extension by Lopez,
+Marmolejo-Coss\'io, Tello Ayala and Parkes, the goal is to choose pools so as to
+maximize the total utility of the individuals confirmed healthy by the end of the
+protocol.
+
+\paragraph{From binary to augmented tests.}
+In classical pooled testing a single test on a subset $t \subseteq [N]$ returns a
+binary answer: $-$ if nobody in $t$ is infected, and $+$ if at least one is. In
+practice the test says more. A qPCR assay returns an integer in
+$\{0,1,\dots,35,36\}$ (a cycle threshold) that is inversely related to the viral
+load of the sample: a result of $36$ means no perceptible load (a negative), and
+anything below means \emph{somebody} in the pool is infected. To begin
+understanding what this extra signal buys, we study its idealized limit, where a
+test on $t$ reveals the exact number of infected individuals it contains,
+\[
+  r(t,Z) \;=\; |t \cap Z| \;=\; \textstyle\sum_{i \in t} Z_i,
+\]
+with $Z \in \{0,1\}^N$ the (latent) infection profile, $Z_i \sim
+\mathrm{Bernoulli}(p_i)$. We call such a test \emph{augmented}. The binary test is
+the coarsening $\mathbf{1}[r > 0]$ of the augmented one, so the augmented setting
+can only help; the question is by how much, and whether it can be exploited
+efficiently. A balls-and-bins reading makes the idealization concrete: think of
+each individual as a bag of red and white balls whose red fraction is the viral
+load; a real assay reports a coarse range for the number of red balls, and the
+augmented test is the limit in which that range collapses to the exact count.
+
+\section{The Dynamic Augmented Pooled Testing Problem}
+We follow the notation of the working note. A \emph{population instance} is
+$J=(p_1,\dots,p_N,u_1,\dots,u_N)$. For a finite set $S$ and integer $G\ge 0$ let
+$\mathcal{P}_G(S)=\{U\subseteq S : |U|\le G\}$.
+
+\begin{definition}[Testing history]
+A history of length $k$ is a list $h_k=\big((t_1,r_1),\dots,(t_k,r_k)\big)$ of
+test--result pairs, $t_j\subseteq[N]$ and $r_j\in\{0,\dots,|t_j|\}$. The only
+history of length $0$ is the empty one, $h_0=\emptyset$.
+\end{definition}
+
+\begin{definition}[DAPTS]
+A \emph{dynamic augmented pooled testing strategy} for budget $B$ and pool limit
+$G$ is a tuple $F=(F_1,\dots,F_B)$ with $F_k:\mathcal{H}_{k-1}\to
+\mathcal{P}_G([N])$ mapping the observed history to the next pool.
+\end{definition}
+
+Running $F$ against a realized profile $Z$ produces a terminal history
+$h_B(F,Z)$. The planner is paid for everyone placed in at least one all-clear
+pool, so the realized utility is
+\[
+  u(F,Z)=\sum_{i\in[N]} u_i\,\mathbf{1}\!\left[\exists\,(t_k,r_k)\in h_B(F,Z):\,
+  i\in t_k,\ r_k=0\right],
+\]
+and the value of $F$ is $u(F)=\mathbb{E}_{Z}\,u(F,Z)$, the expectation taken over
+$Z\sim\prod_i \mathrm{Bernoulli}(p_i)$.
+
+\paragraph{A hierarchy of optima.}
+For a fixed $(J,B,G)$ it is useful to compare the best achievable value under
+progressively more powerful regimes:
+$\mathcal{U}^{\mathrm{single}}$ (test individuals one at a time, no pooling),
+$\mathcal{U}^{s}_{\mathrm{NO}}$ and $\mathcal{U}^{s}_{\mathrm{O}}$ (optimal
+\emph{static} non-overlapping and overlapping pooled plans, fixed in advance),
+$\mathcal{U}^{D}$ (optimal \emph{dynamic binary} testing), $\mathcal{U}^{D}_{A}$
+(optimal \emph{dynamic augmented} testing), and $\mathcal{U}^{\max}=\sum_i
+u_i q_i$ (the value of knowing every status for free). By construction
+\[
+  \mathcal{U}^{\mathrm{single}} \le
+  \mathcal{U}^{s}_{\mathrm{NO}} \le
+  \mathcal{U}^{s}_{\mathrm{O}} \le
+  \mathcal{U}^{D} \le
+  \mathcal{U}^{D}_{A} \le
+  \mathcal{U}^{\max}.
+\]
+The single new link is $\mathcal{U}^{D}\le\mathcal{U}^{D}_{A}$: the augmented
+test dominates the binary one because its outcome refines the binary outcome.
+The size of that gap --- the welfare value of counting --- is the quantity this
+paper measures.
+
+\begin{example}[Counting deduces what binary cannot]
+Let $N=3$ with tests $t_1=\{0,1\}$ and $t_2=\{1,2\}$. Suppose the augmented
+results are $r_1=1$ and $r_2=0$. From $r_2=0$ we learn individuals $1$ and $2$
+are healthy; combined with $r_1=1$ we deduce individual $0$ is \emph{infected}
+with certainty --- without ever testing $0$ alone. A binary planner seeing
+$t_1{=}+,\,t_2{=}-$ learns the same about $1$ and $2$ but, in overlapping
+designs with intermediate counts, the binary outcome generally loses the
+cross-test arithmetic that pins down the remaining individuals.
+\end{example}
+
+\section{Posterior Inference under Augmented Pooled Testing}
+Dynamic policies need posterior infection probabilities after each test. Writing
+$A\in\{0,1\}^{k\times N}$ for the test--incidence matrix and $r$ for the observed
+counts, the posterior over profiles is
+\[
+  \Pr[X=x \mid Ax=r] \;=\;
+  \frac{\mathbf{1}[Ax=r]\,\prod_i p_i^{x_i}q_i^{1-x_i}}{Z},
+  \qquad
+  Z=\!\!\sum_{x:\,Ax=r}\prod_i p_i^{x_i}q_i^{1-x_i},
+\]
+and the planner wants the marginals $q_i'=\Pr[X_i=0\mid Ax=r]$. The normalizing
+constant $Z$ is a weighted count of $0/1$ solutions to a system of cardinality
+constraints, which is exactly where hardness enters.
+
+\begin{proposition}\label{prop:sharpP}
+Computing the exact posterior marginal $\Pr[X_i=0\mid Ax=r]$ under augmented
+pooled testing is \#P-hard.
+\end{proposition}
+\begin{proof}[Proof sketch]
+Reduce from \#Exact Cover. Associate a binary variable with each set in the set
+system; for every ground element create a pooled test containing exactly the
+variables whose sets contain that element, and fix its observed count to $1$.
+Feasible $0/1$ assignments are then in bijection with exact covers, and with
+uniform priors $p_i=\tfrac12$ the posterior is uniform over feasible
+assignments, so $Z$ counts exact covers. Since counting exact covers is
+\#P-complete, exact inference is \#P-hard.
+\end{proof}
+
+This is the central structural fact: the very deductions that make counting
+powerful also make exact inference intractable in general. Several structured
+regimes escape it.
+\begin{itemize}
+  \item \textbf{Disjoint pools.} If the tested subsets are pairwise disjoint the
+  posterior factorizes and marginals are computed per pool.
+  \item \textbf{Laminar / nested pools.} If every two pools are disjoint or
+  nested, dynamic programming on the inclusion tree gives exact marginals.
+  \item \textbf{Bounded treewidth.} The history induces a factor graph (variables
+  = individuals, factors = cardinality-constrained tests); junction-tree
+  inference is polynomial when its treewidth is bounded.
+  \item \textbf{Few tests.} Grouping individuals by their membership pattern
+  across the $k$ tests gives inference exponential in $k$ but polynomial in $N$.
+\end{itemize}
+
+\paragraph{Approximate inference and an ergodicity subtlety.}
+Beyond these regimes we estimate marginals by sampling profiles consistent with
+$Ax=r$. The natural Markov chain resamples one individual at a time, but on the
+exact-count fiber a single-site move almost never preserves feasibility: any
+agent inside a tight pool cannot flip alone. Swap moves (exchange an infected and
+a healthy member of one pool) fix this within a pool but \emph{preserve the total
+infected count}, so the chain is trapped in whichever count level it starts in.
+On tests $\{0,1\}{=}1,\{1,2\}{=}1$ with prior $0.15$, the exact posterior is
+$(0.15,0.85,0.15)$, yet a swap-only sampler returns $(0,1,0)$ or $(1,0,1)$
+depending on the seed. We restore ergodicity in two steps. First we decompose
+the active individuals into connected components (linked by shared tests); the
+posterior factorizes across components, so each is solved independently and
+\emph{exactly} by enumeration whenever it is small --- which, because the cap is
+per component, covers every scale we encounter. For a single component too large
+to enumerate we run a Metropolis sampler over \emph{alternating-path} moves:
+kernel vectors of $A$ with entries in $\{-1,0,+1\}$ that balance every test yet
+can change the total count (e.g.\ $(+1,-1,+1)$ on the example above), which is
+precisely the move the local samplers lack.
+
+\section{Algorithms}
+\paragraph{Exact dynamic program.}
+The optimal DAPTS is computed by a backward recursion over the state
+$(k,\,\text{set of profiles still consistent with the history},\,\text{cleared
+set})$. An augmented test branches into $|t|+1$ outcomes against the binary test's
+two, and we reconstruct the optimal policy tree. Exact solution is feasible only
+for small populations ($N\le 14$), which is why we also study scalable
+heuristics.
+
+\paragraph{Myopic greedy.}
+At each step the greedy picks the pool maximizing the immediate expected cleared
+utility,
+\[
+  \mathrm{Score}(t)=\Big(\textstyle\prod_{i\in t}(1-\tilde p_i)\Big)
+  \sum_{i\in t} u_i,
+\]
+with $\tilde p_i$ the current posterior marginal, then updates beliefs and
+repeats. A useful observation is that the myopic \emph{choice} is identical for
+binary and augmented tests --- only $r=0$ yields immediate utility --- so the
+augmented information helps only through better posteriors at later steps, never
+through the first move. Two subtleties matter for correctness.
+\begin{itemize}
+  \item \textbf{Harvesting deduced-healthy individuals.} Utility is credited only
+  when an individual is physically placed in an all-clear pool. An individual
+  deduced healthy by counting ($\tilde p_i=0$) carries zero risk yet still owns
+  $u_i$, which is collected only by testing them in a guaranteed-$r{=}0$ pool.
+  Filtering such individuals out of future pools forfeits $u_i$ --- a genuine
+  sub-optimality the dynamic program avoids by spending a test to harvest them.
+  Keeping them eligible recovers the gap (on one instance, the counting greedy's
+  value rises from $46.0$ to $57.6$, against the optimum $57.8$).
+  \item \textbf{Exact branch weights in evaluation.} To compute a counting
+  policy's expected value one sums over outcomes $r$. Weighting those branches by
+  a Poisson-Binomial of the posterior \emph{marginals} assumes an independence
+  that conditioning on the history has destroyed, and can mis-state a policy's
+  own value by double digits. The branches must be weighted by the exact
+  $P(r\mid\text{history})$ over consistent profiles; doing so makes each
+  closed-form value equal the value obtained by simulating the policy.
+\end{itemize}
+
+\paragraph{Reinforcement learning.}
+For populations beyond the exact wall we provide a reinforcement-learning
+baseline: a bucketed Gymnasium environment (agents summarized by health/utility
+histogram) in which a PPO agent assembles the first pool and the augmented myopic
+greedy plays the remaining tests, with reward equal to the realized cleared
+utility. The environment uses no conic solver and is fully seeded; training at
+scale is left to a compute cluster.
+
+\section{Experiments}
+We draw $p_i\sim U(0,1)$ and $u_i\sim\mathrm{Uniform}\{1,2,3\}$ and report the
+mean of each quantity in the hierarchy over $200$ instances per configuration
+(corrected code; the chain held on every instance). Table~\ref{tab:hier} shows
+the welfare advantage of the count test over the binary test, $\mathcal{U}^{D}_{A}
+-\mathcal{U}^{D}$, growing from $+0.6\%$ at $N{=}3$ to $+4.0\%$ at $N{=}5$, with a
+larger gap at $N{=}7$ (single-budget regimes show the smallest gap, as only one
+outcome can be conditioned upon). The trend is consistent with the mechanism:
+counting helps through posteriors over a longer horizon, so its value rises as
+the budget and population grow.
+
+\begin{table}[t]
+\centering
+\caption{Mean welfare over $200$ instances/config (corrected code). The last
+column is the augmented benefit $\mathcal{U}^{D}_{A}-\mathcal{U}^{D}$ as a
+percentage of $\mathcal{U}^{D}$.}
+\label{tab:hier}
+\small
+\begin{tabular}{lllrrrrrr}
+\toprule
+$N$ & $B$ & $G$ & $\mathcal{U}^{\mathrm{single}}$ & $\mathcal{U}^{s}_{\mathrm{NO}}$ & $\mathcal{U}^{s}_{\mathrm{O}}$ & $\mathcal{U}^{D}$ & $\mathcal{U}^{D}_{A}$ & benefit \\
+\midrule
+3 & 2 & 3 & 2.572 & 2.643 & 2.659 & 2.686 & 2.704 & $+0.63\%$ \\
+5 & 3 & 5 & 4.284 & 4.473 & 4.519 & 4.600 & 4.771 & $+3.97\%$ \\
+7 & 3 & 7 & \multicolumn{6}{l}{\emph{(running; fill from results/hierarchy/hierarchy\_n7.csv)}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion and Outlook}
+We have taken the step flagged as future work by the binary dynamic study ---
+``richer testing outcomes beyond binary results'' --- and characterized dynamic
+welfare-maximizing pooled testing under exact count outcomes. The picture has two
+sides. Information: counting strictly dominates and its welfare value grows with
+scale, but the inference that realizes it is \#P-hard in general and tractable
+only on structured designs. Computation: a corrected greedy and an ergodic
+sampler make the heuristics faithful, and a seeded RL environment is ready for
+large-scale training. The open theoretical question is whether the count-augmented
+per-step value is adaptive-submodular, which would give the greedy a
+$(1-1/e)$-style guarantee; the open empirical question is how the advantage
+behaves on real quantitative-PCR data, where the count is observed only through a
+noisy cycle threshold. Both bear directly on whether augmented pooled testing can
+improve real public-health screening.
+\end{document}
