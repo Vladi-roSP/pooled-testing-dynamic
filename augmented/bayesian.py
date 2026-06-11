@@ -9,6 +9,8 @@ In the idealized augmented model, testing pool t yields r = |t ∩ Z|
 (the exact count of infected in the pool).
 """
 
+import math
+
 from augmented.core import indices_from_mask, test_result, popcount
 
 
@@ -249,62 +251,12 @@ def exact_pool_pmf(p, history, pool_mask, n):
     return pmf
 
 
-# Subproblemas con <= EXACT_ACTIVE_THRESHOLD agentes activos (tras el
-# preprocesamiento) se resuelven por enumeracion EXACTA sobre el conjunto activo
-# (costo 2^|activos|, independiente de n). Cubre todas las escalas reales del
-# proyecto (el DP exacto topa en n<=14). Por encima de eso se usa MCMC con guard
-# de validez; si el MCMC no junta muestras validas, hay un fallback exacto capado.
+# Per-CONNECTED-COMPONENT exact enumeration cap. A component with this many or
+# fewer agents is solved exactly (cost 2^|component|, independent of n); larger
+# single components fall back to the alternating-move MCMC. Because the cap is
+# per component (not over the whole active set) it covers every real scale of the
+# project (the exact DP itself tops out at n<=14).
 EXACT_ACTIVE_THRESHOLD = 16
-EXACT_ACTIVE_FALLBACK_CAP = 22
-
-
-def _exact_active_marginals(p, remaining_tests, active_list, posterior, n):
-    """Marginales posteriores EXACTAS enumerando solo el conjunto ACTIVO.
-
-    Tras el preprocesamiento, los agentes confirmados ya estan fijos en
-    ``posterior`` (0/1) y los no-activos sin restriccion conservan su prior. La
-    posterior conjunta de los activos es la enumeracion ponderada por el prior
-    sobre las 2^|activos| asignaciones que satisfacen ``remaining_tests`` (cuyos
-    pools/conteos ya estan reducidos al conjunto activo). Costo O(2^A * k),
-    independiente de n, y numericamente identico a la enumeracion completa 2^n.
-    """
-    A = active_list
-    m = len(A)
-    pos = {agent: b for b, agent in enumerate(A)}
-    test_masks = []
-    for eff_pool, eff_r in remaining_tests:
-        bm = 0
-        for agent in A:
-            if eff_pool >> agent & 1:
-                bm |= (1 << pos[agent])
-        test_masks.append((bm, eff_r))
-    pa = [p[agent] for agent in A]
-    qa = [1.0 - p[agent] for agent in A]
-
-    total_w = 0.0
-    infected_w = [0.0] * m
-    for assign in range(1 << m):
-        ok = True
-        for bm, eff_r in test_masks:
-            if (assign & bm).bit_count() != eff_r:
-                ok = False
-                break
-        if not ok:
-            continue
-        w = 1.0
-        for b in range(m):
-            w *= pa[b] if (assign >> b & 1) else qa[b]
-        total_w += w
-        bits = assign
-        while bits:
-            lsb = bits & -bits
-            b = lsb.bit_length() - 1
-            infected_w[b] += w
-            bits ^= lsb
-    if total_w > 0:
-        for b, agent in enumerate(A):
-            posterior[agent] = infected_w[b] / total_w
-    return posterior
 
 
 def _find_valid_state(remaining_tests, active_list, p, rng,
@@ -347,6 +299,195 @@ def _find_valid_state(remaining_tests, active_list, p, rng,
         if v == 0:
             return state
     return None
+
+
+def _connected_components(active_list, remaining_tests):
+    """Partition active agents into connected components, where two agents are
+    connected iff they co-occur in some remaining test. Tests never cross
+    components (all agents of a test are mutually connected), so the posterior
+    factorizes across components and each can be solved independently. Returns a
+    list of sorted agent lists."""
+    parent = {i: i for i in active_list}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for pool_mask, r in remaining_tests:
+        members = [i for i in active_list if pool_mask >> i & 1]
+        for k in range(1, len(members)):
+            union(members[0], members[k])
+
+    comps = {}
+    for i in active_list:
+        comps.setdefault(find(i), []).append(i)
+    return [sorted(c) for c in comps.values()]
+
+
+def _component_tests(comp, remaining_tests):
+    """Tests that live entirely inside this component, as (members, r) pairs."""
+    comp_set = set(comp)
+    tests = []
+    for pool_mask, r in remaining_tests:
+        members = [a for a in comp if pool_mask >> a & 1]
+        if members:
+            tests.append((members, r))
+    return tests
+
+
+def _exact_component_marginals(comp, tests, p):
+    """Exact P(agent infected | tests) by enumerating the component's 2^|comp|
+    assignments consistent with its exact-count tests. Cost 2^|comp| * k,
+    independent of n. Raises ValueError if the component is infeasible."""
+    m = len(comp)
+    pos = {a: b for b, a in enumerate(comp)}
+    test_masks = []
+    for members, r in tests:
+        bm = 0
+        for a in members:
+            bm |= (1 << pos[a])
+        test_masks.append((bm, r))
+    pa = [p[a] for a in comp]
+    qa = [1.0 - p[a] for a in comp]
+
+    total = 0.0
+    infected_w = [0.0] * m
+    for assign in range(1 << m):
+        ok = True
+        for bm, r in test_masks:
+            if (assign & bm).bit_count() != r:
+                ok = False
+                break
+        if not ok:
+            continue
+        w = 1.0
+        for b in range(m):
+            w *= pa[b] if (assign >> b & 1) else qa[b]
+        total += w
+        bits = assign
+        while bits:
+            lsb = bits & -bits
+            b = lsb.bit_length() - 1
+            infected_w[b] += w
+            bits ^= lsb
+    if total <= 0.0:
+        raise ValueError("infeasible component in gibbs_update")
+    return {comp[b]: infected_w[b] / total for b in range(m)}
+
+
+def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
+    """Propose a Markov-basis move on the exact-count fiber: a kernel vector
+    delta in {-1,0,+1} with A·delta = 0 that is applicable to `state`
+    (flips 0->1 where +1, 1->0 where -1). Built as a randomized alternating
+    path/cycle in the agent-test incidence: flipping one agent unbalances its
+    tests, each repaired by flipping a partner the other way, propagating until
+    every test is balanced again. Crucially these moves CAN change the total
+    infected count (e.g. (+1,-1,+1) on {0,1}=1,{1,2}=1), which single-site/swap
+    moves cannot — restoring ergodicity across count levels. Returns a dict
+    {agent: new_value} or None if it dead-ends within the step budget."""
+    a0 = rng.choice(comp)
+    delta = {a0: 1 - 2 * state[a0]}          # +1 (0->1) or -1 (1->0)
+    pending = {}                              # test_idx -> net imbalance to undo
+    for ti in agent_tests[a0]:
+        pending[ti] = pending.get(ti, 0) + delta[a0]
+
+    steps = 0
+    while any(v != 0 for v in pending.values()):
+        steps += 1
+        if steps > max_steps:
+            return None
+        ti = next(t for t, v in pending.items() if v != 0)
+        imbalance = pending[ti]
+        want = -1 if imbalance > 0 else +1   # direction to flip a partner
+        members, r = tests[ti]
+        elig = [a for a in members
+                if a not in delta
+                and ((want == -1 and state[a] == 1)
+                     or (want == +1 and state[a] == 0))]
+        if not elig:
+            return None                      # dead end -> reject
+        a = rng.choice(elig)
+        delta[a] = want
+        for tj in agent_tests[a]:
+            pending[tj] = pending.get(tj, 0) + want
+
+    return {a: state[a] + d for a, d in delta.items()}
+
+
+def _alternating_move_component_marginals(comp, tests, p, rng,
+                                          num_iterations, burn_in,
+                                          window_size, tolerance):
+    """Metropolis sampler over a connected component using alternating-path
+    Markov moves (count-changing, hence ergodic) with prior-ratio acceptance.
+    Used only when a single connected component is too large for exact
+    enumeration (rare). Validated against exact enumeration on small forced
+    instances."""
+    agent_tests = {a: [] for a in comp}
+    for ti, (members, r) in enumerate(tests):
+        for a in members:
+            agent_tests[a].append(ti)
+
+    # Seed a valid state by min-conflicts (reuse the existing helper).
+    remaining = [( _mask(members), r) for members, r in tests]
+    state = _find_valid_state(remaining, comp, p, rng)
+    if state is None:
+        # Last resort: exact (capped) — the component must be feasible.
+        return _exact_component_marginals(comp, tests, p)
+
+    max_steps = 6 * len(comp) + 12
+    infected_counts = {a: 0 for a in comp}
+    total_samples = 0
+    prev = None
+    for it in range(num_iterations):
+        # several move attempts per sweep to decorrelate
+        for _ in range(max(len(comp), 5)):
+            move = _propose_alternating_move(comp, tests, agent_tests,
+                                             state, rng, max_steps)
+            if move is None:
+                continue
+            log_ratio = 0.0
+            ok = True
+            for a, nv in move.items():
+                ov = state[a]
+                if nv == ov:
+                    continue
+                num = p[a] if nv == 1 else (1.0 - p[a])
+                den = p[a] if ov == 1 else (1.0 - p[a])
+                if num <= 0.0:
+                    ok = False
+                    break
+                log_ratio += math.log(num) - math.log(den) if den > 0 else 50.0
+            if ok and (log_ratio >= 0 or rng.random() < math.exp(log_ratio)):
+                state.update(move)
+        if it >= burn_in:
+            for a in comp:
+                if state[a] == 1:
+                    infected_counts[a] += 1
+            total_samples += 1
+            if total_samples % window_size == 0:
+                cur = {a: infected_counts[a] / total_samples for a in comp}
+                if prev is not None and max(abs(cur[a] - prev[a])
+                                            for a in comp) < tolerance:
+                    break
+                prev = cur
+
+    if total_samples == 0:
+        return _exact_component_marginals(comp, tests, p)
+    return {a: infected_counts[a] / total_samples for a in comp}
+
+
+def _mask(agents):
+    m = 0
+    for a in agents:
+        m |= (1 << a)
+    return m
 
 
 def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
@@ -467,180 +608,28 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
 
     active_list = sorted(active_set)
 
-    # Enumeracion EXACTA sobre el conjunto activo (costo 2^|activos|,
-    # independiente de n). Correcto y barato para todas las escalas reales.
-    # Reemplaza el atajo anterior `<=7 -> 2^n`, que (a) no cubria subproblemas
-    # acoplados mas grandes y (b) era O(2^n), por lo que colgaba con n grande aun
-    # con pocos activos.
-    if len(active_list) <= EXACT_ACTIVE_THRESHOLD:
-        return _exact_active_marginals(p, remaining_tests, active_list, posterior, n)
-
-    # For each active agent, precompute which tests involve them
-    agent_tests = {i: [] for i in active_list}
-    for idx, (pool_mask, r) in enumerate(remaining_tests):
-        for i in active_list:
-            if pool_mask >> i & 1:
-                agent_tests[i].append(idx)
-
-    # ---- Step 2: Initialize state to a VALID (consistent) profile ----
-    # El init greedy anterior podia arrancar INVALIDO cuando los pools se
-    # solapan, y un arranque invalido no se reparaba de forma confiable y
-    # contaminaba el estimado. Sembramos con busqueda de minimos conflictos para
-    # que la cadena empiece consistente.
-    state = _find_valid_state(remaining_tests, active_list, p, rng)
-    if state is None:
-        # Fallback: asignacion greedy (puede ser invalida) — el guard de mas
-        # abajo asegura que solo se cuenten muestras validas.
-        state = {i: 0 for i in active_list}
-        for pool_mask, r in remaining_tests:
-            pool_agents = [j for j in active_list if pool_mask >> j & 1]
-            needed = r - sum(state[j] for j in pool_agents)
-            if needed > 0:
-                healthy_in_pool = [j for j in pool_agents if state[j] == 0]
-                healthy_in_pool.sort(key=lambda j: p[j], reverse=True)
-                for j in healthy_in_pool[:needed]:
-                    state[j] = 1
-
-    # Helper: check if current state satisfies all test constraints
-    def _state_valid():
-        for pm, r_val in remaining_tests:
-            cnt = sum(state[j] for j in active_list if pm >> j & 1)
-            if cnt != r_val:
-                return False
-        return True
-
-    # Helper: count infected in a test pool
-    def _count_infected(test_idx):
-        pm = remaining_tests[test_idx][0]
-        return sum(state[j] for j in active_list if pm >> j & 1)
-
-    # ---- Step 3: Gibbs iterations with swap moves ----
-    healthy_counts = {i: 0 for i in active_list}
-    total_samples = 0
-    prev_marginals = None
-
-    for iteration in range(num_iterations):
-        # --- Standard Gibbs sweep ---
-        order = list(active_list)
-        rng.shuffle(order)
-
-        for i in order:
-            infected_ok = True
-            healthy_ok = True
-
-            for test_idx in agent_tests[i]:
-                pool_mask, r = remaining_tests[test_idx]
-                other_infected = 0
-                for j in active_list:
-                    if j != i and (pool_mask >> j & 1) and state[j] == 1:
-                        other_infected += 1
-
-                if other_infected + 1 != r:
-                    infected_ok = False
-                if other_infected != r:
-                    healthy_ok = False
-
-            if infected_ok and healthy_ok:
-                state[i] = 1 if rng.random() < p[i] else 0
-            elif infected_ok:
-                state[i] = 1
-            elif healthy_ok:
-                state[i] = 0
-            # else: neither consistent — keep current state
-
-        # --- Swap moves (Metropolis-Hastings) ---
-        # For each test with 0 < r < |pool|, propose swapping an infected
-        # and a healthy member. This ensures ergodicity for exact-count
-        # constraints where standard Gibbs gets stuck.
-        for test_idx, (pool_mask, r) in enumerate(remaining_tests):
-            infected_in_pool = [j for j in active_list
-                                if (pool_mask >> j & 1) and state[j] == 1]
-            healthy_in_pool = [j for j in active_list
-                               if (pool_mask >> j & 1) and state[j] == 0]
-
-            if not infected_in_pool or not healthy_in_pool:
-                continue
-
-            i_inf = rng.choice(infected_in_pool)
-            i_hlt = rng.choice(healthy_in_pool)
-
-            # Temporarily swap
-            state[i_inf], state[i_hlt] = 0, 1
-
-            # Check all tests involving either agent
-            swap_valid = True
-            for tidx in set(agent_tests[i_inf]) | set(agent_tests[i_hlt]):
-                if _count_infected(tidx) != remaining_tests[tidx][1]:
-                    swap_valid = False
-                    break
-
-            if swap_valid:
-                # Metropolis-Hastings acceptance ratio based on priors
-                p_new = p[i_hlt] * (1.0 - p[i_inf])
-                p_old = p[i_inf] * (1.0 - p[i_hlt])
-                acceptance = min(1.0, p_new / p_old) if p_old > 0 else 1.0
-
-                if rng.random() >= acceptance:
-                    state[i_inf], state[i_hlt] = 1, 0  # reject
-            else:
-                state[i_inf], state[i_hlt] = 1, 0  # revert invalid swap
-
-        # --- Global pairwise block moves ---
-        # These proposals are not restricted to a single test pool, so they
-        # can move across broader feasible regions when pools overlap.
-        n_block_moves = max(len(active_list), 5)
-        for _ in range(n_block_moves):
-            inf_agents = [j for j in active_list if state[j] == 1]
-            hlt_agents = [j for j in active_list if state[j] == 0]
-
-            if not inf_agents or not hlt_agents:
-                break
-
-            i_inf = rng.choice(inf_agents)
-            i_hlt = rng.choice(hlt_agents)
-            state[i_inf], state[i_hlt] = 0, 1
-
-            if _state_valid():
-                p_new = p[i_hlt] * (1.0 - p[i_inf])
-                p_old = p[i_inf] * (1.0 - p[i_hlt])
-                acceptance = min(1.0, p_new / p_old) if p_old > 0 else 1.0
-
-                if rng.random() >= acceptance:
-                    state[i_inf], state[i_hlt] = 1, 0  # reject
-            else:
-                state[i_inf], state[i_hlt] = 1, 0  # revert invalid swap
-
-        # ---- Step 4: Collect samples after burn-in (SOLO estados validos) ----
-        # Guard: nunca contar un estado que viole los conteos observados.
-        # total_samples y la ventana de convergencia avanzan solo en validas.
-        if iteration >= burn_in and _state_valid():
-            for i in active_list:
-                if state[i] == 0:
-                    healthy_counts[i] += 1
-            total_samples += 1
-
-            # Convergence check
-            if total_samples > 0 and total_samples % window_size == 0:
-                current_marginals = {i: 1.0 - healthy_counts[i] / total_samples
-                                     for i in active_list}
-                if prev_marginals is not None:
-                    max_diff = max(abs(current_marginals[i] - prev_marginals[i])
-                                  for i in active_list)
-                    if max_diff < tolerance:
-                        break
-                prev_marginals = current_marginals
-
-    # Compute posteriors from the collected VALID samples.
-    if total_samples > 0:
-        for i in active_list:
-            posterior[i] = 1.0 - healthy_counts[i] / total_samples
-    elif len(active_list) <= EXACT_ACTIVE_FALLBACK_CAP:
-        # No se junto ninguna muestra valida (p.ej. mala mezcla). Fallback exacto
-        # CAPADO: garantiza correctitud sin arriesgar un cuelgue 2^grande.
-        posterior = _exact_active_marginals(p, remaining_tests, active_list,
-                                            posterior, n)
-    # else: se dejan las confirmaciones deterministas + prior para los activos
-    #       (aproximado, pero de costo acotado; solo para conjuntos activos enormes).
+    # ---- Step 2: Decompose into connected components and solve each ----
+    # Agents are connected iff they co-occur in a remaining test, so the
+    # posterior factorizes across components. We solve each component EXACTLY by
+    # enumerating its 2^|component| feasible assignments — this is both exact and
+    # ergodicity-free, and because the cap applies PER COMPONENT it covers far
+    # larger active sets than the old monolithic 2^|active| shortcut. Only a
+    # single connected component larger than the cap (rare in practice) falls
+    # back to MCMC, and that MCMC uses alternating-path Markov moves that can
+    # change the total infected count — the moves the old single-site/swap/block
+    # sampler lacked, which is why it got stuck on overlapping exact-count pools.
+    components = _connected_components(active_list, remaining_tests)
+    for comp in components:
+        comp_tests = _component_tests(comp, remaining_tests)
+        if len(comp) <= EXACT_ACTIVE_THRESHOLD:
+            marg = _exact_component_marginals(comp, comp_tests, p)
+        else:
+            marg = _alternating_move_component_marginals(
+                comp, comp_tests, p, rng,
+                num_iterations=num_iterations, burn_in=burn_in,
+                window_size=window_size, tolerance=tolerance)
+        for a, val in marg.items():
+            posterior[a] = val
 
     return posterior
 

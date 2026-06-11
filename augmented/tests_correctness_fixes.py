@@ -216,6 +216,51 @@ def test_eu_still_equals_simulation_after_harvest_fix():
     assert abs(eu - truth) < 1e-9, f"EU {eu:.6f} != truth {truth:.6f}"
 
 
+# ===================================================================
+# Fix (Gibbs ergodicity): the MCMC sampler could not move between feasible
+# regions with different TOTAL infected counts (single-site/swap/block moves all
+# preserve the count), so it returned biased marginals. Canonical instance:
+# tests {0,1}=1 and {1,2}=1, prior 0.15 -> exact posterior [0.15, 0.85, 0.15],
+# but the stuck sampler returns ~[0,1,0] or ~[1,0,1] depending on the seed.
+# ===================================================================
+
+def _force_mcmc_gibbs(p, history, n, seed, cap=2):
+    import augmented.bayesian as bayes
+    saved = bayes.EXACT_ACTIVE_THRESHOLD
+    bayes.EXACT_ACTIVE_THRESHOLD = cap  # force the MCMC path for >cap active
+    try:
+        return bayes.gibbs_update(p, history, n, num_iterations=20000,
+                                  burn_in=2000, seed=seed)
+    finally:
+        bayes.EXACT_ACTIVE_THRESHOLD = saved
+
+
+def test_gibbs_mcmc_is_ergodic_across_count_levels():
+    from augmented.bayesian import bayesian_update_by_counting
+    p = [0.15, 0.15, 0.15]
+    history = ((mask_from_indices([0, 1]), 1), (mask_from_indices([1, 2]), 1))
+    exact = bayesian_update_by_counting(p, history, 3)  # [0.15, 0.85, 0.15]
+    for seed in (0, 1, 7, 42):
+        marg = _force_mcmc_gibbs(p, history, 3, seed=seed)
+        err = max(abs(marg[i] - exact[i]) for i in range(3))
+        assert err < 0.05, (
+            f"seed={seed}: gibbs marginals {marg} vs exact {exact} (err {err:.3f}) "
+            "— sampler stuck in one count level (non-ergodic)"
+        )
+
+
+def test_gibbs_components_solved_independently():
+    # Two disjoint constrained pairs + one free agent: marginals must be exact
+    # even when forced onto the MCMC path (connected-component decomposition).
+    from augmented.bayesian import bayesian_update_by_counting
+    p = [0.2, 0.2, 0.3, 0.3, 0.4]
+    history = ((mask_from_indices([0, 1]), 1), (mask_from_indices([2, 3]), 1))
+    exact = bayesian_update_by_counting(p, history, 5)
+    marg = _force_mcmc_gibbs(p, history, 5, seed=3)
+    err = max(abs(marg[i] - exact[i]) for i in range(5))
+    assert err < 0.05, f"gibbs {marg} vs exact {exact} (err {err:.3f})"
+
+
 def _run_all():
     import traceback
     tests = [v for k, v in sorted(globals().items())
