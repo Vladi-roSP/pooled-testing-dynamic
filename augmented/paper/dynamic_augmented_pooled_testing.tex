@@ -41,8 +41,8 @@ by the \emph{exact} conditional $P(r\mid\text{history})$, not by a
 product-of-marginals approximation, and a Gibbs sampler over the exact-count
 fiber must use moves that change the total infected count to be ergodic. On
 synthetic instances the welfare advantage of the count test over the binary test
-is small at low budget and grows with scale ($+0.6\%$ at $N{=}3$ to $+4.0\%$ at
-$N{=}5$ and larger at $N{=}7$), matching the intuition that count outcomes pay
+is small at low budget and grows with scale ($+0.6\%$ at $N{=}3$, $+4.0\%$ at
+$N{=}5$, $+5.1\%$ at $N{=}7$), matching the intuition that count outcomes pay
 off through better posteriors over a longer horizon.
 \end{abstract}
 
@@ -254,17 +254,18 @@ We draw $p_i\sim U(0,1)$ and $u_i\sim\mathrm{Uniform}\{1,2,3\}$ and report the
 mean of each quantity in the hierarchy over $200$ instances per configuration
 (corrected code; the chain held on every instance). Table~\ref{tab:hier} shows
 the welfare advantage of the count test over the binary test, $\mathcal{U}^{D}_{A}
--\mathcal{U}^{D}$, growing from $+0.6\%$ at $N{=}3$ to $+4.0\%$ at $N{=}5$, with a
-larger gap at $N{=}7$ (single-budget regimes show the smallest gap, as only one
+-\mathcal{U}^{D}$, growing from $+0.6\%$ at $N{=}3$ to $+4.0\%$ at $N{=}5$ and
+$+5.1\%$ at $N{=}7$ (single-budget regimes show the smallest gap, as only one
 outcome can be conditioned upon). The trend is consistent with the mechanism:
 counting helps through posteriors over a longer horizon, so its value rises as
 the budget and population grow.
 
 \begin{table}[t]
 \centering
-\caption{Mean welfare over $200$ instances/config (corrected code). The last
-column is the augmented benefit $\mathcal{U}^{D}_{A}-\mathcal{U}^{D}$ as a
-percentage of $\mathcal{U}^{D}$.}
+\caption{Mean welfare (corrected code) over $200$ instances/config for $N\in
+\{3,5\}$ and $40$ instances for the heavier $N{=}7$. The last column is the
+augmented benefit $\mathcal{U}^{D}_{A}-\mathcal{U}^{D}$ as a percentage of
+$\mathcal{U}^{D}$. The chain held on every instance.}
 \label{tab:hier}
 \small
 \begin{tabular}{lllrrrrrr}
@@ -273,7 +274,7 @@ $N$ & $B$ & $G$ & $\mathcal{U}^{\mathrm{single}}$ & $\mathcal{U}^{s}_{\mathrm{NO
 \midrule
 3 & 2 & 3 & 2.572 & 2.643 & 2.659 & 2.686 & 2.704 & $+0.63\%$ \\
 5 & 3 & 5 & 4.284 & 4.473 & 4.519 & 4.600 & 4.771 & $+3.97\%$ \\
-7 & 3 & 7 & \multicolumn{6}{l}{\emph{(running; fill from results/hierarchy/hierarchy\_n7.csv)}} \\
+7 & 3 & 7 & 4.908 & 5.249 & 5.335 & 5.454 & 5.717 & $+5.07\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}

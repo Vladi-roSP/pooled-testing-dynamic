@@ -99,12 +99,12 @@ que el valor cerrado iguala al de simular la política.
 
 Con p_i ~ U(0,1) y u_i uniforme en {1,2,3}, sobre 200 instancias por
 configuración y con el código corregido, la cadena se cumple en todas las
-instancias y el beneficio augmentado U_D_A − U_D crece con la escala: +0.63% en
-N=3, +3.97% en N=5, y mayor en N=7. El régimen de presupuesto bajo muestra el
-hueco más chico porque solo se condiciona en un resultado. La tendencia respalda
-el mecanismo: el conteo paga vía mejores posteriores sobre un horizonte más
-largo, así que su valor sube con el presupuesto y la población. El número de N=7
-se completa desde `results/hierarchy/hierarchy_n7.csv` cuando termina la corrida.
+instancias (40 en N=7, más pesado) y el beneficio augmentado U_D_A − U_D crece
+con la escala: +0.63% en N=3, +3.97% en N=5 y +5.07% en N=7. El régimen de
+presupuesto bajo muestra el hueco más chico porque solo se condiciona en un
+resultado. La tendencia respalda el mecanismo: el conteo paga vía mejores
+posteriores sobre un horizonte más largo, así que su valor sube con el
+presupuesto y la población.
 
 ## Qué queda abierto
 
