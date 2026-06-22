@@ -40,7 +40,7 @@ augmented/**/*.out
 docs/study_guides/
 
 # Notas personales de sesiones (no subir)
-*_personales.md
+*_personales.*
 
 # Figuras extraidas y dumps de scratch de notebooks (las figuras viven en los .ipynb)
 augmented/notebooks/comp_fig_*.png
@@ -51,7 +51,7 @@ augmented/notebooks/vw_iter*.png
 augmented/notebooks/_cur_*.png
 augmented/notebooks/*_raw.json
 
-# LaTeX: fuentes .tex y derivados (el PDF compilado si se conserva)
+# LaTeX: fuentes .tex y derivados
 *.tex
 *.aux
 *.out
@@ -64,3 +64,13 @@ augmented/notebooks/*_raw.json
 *.nav
 *.snm
 *.vrb
+
+# PDFs compilados de LaTeX: regenerables desde el .tex, no se versionan.
+# (Los PDFs de notebooks ya trackeados no se ven afectados por esta regla.)
+*.pdf
+
+# Obsidian: el vault vive FUERA del repo (../Vault-PooledTesting). Estas reglas
+# son defensivas por si se moviera dentro.
+.obsidian/
+Vault-PooledTesting/
+*.obsidian-vault/
