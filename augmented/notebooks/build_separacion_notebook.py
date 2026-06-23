@@ -144,9 +144,9 @@ for ax, (gap, p, u, h), titulo in [
     ax.axhline(h['U_max'], ls=':', color='0.4', lw=1)  # Umax es cota, no peldano
     ax.set_xticks(range(len(vals))); ax.set_xticklabels(etiquetas, fontsize=8)
     ax.set_title(f'{titulo}\nbrecha U_D_A - U_D = {gap:.3f}', fontsize=10)
-    ax.annotate('contar', xy=(CHAIN.index('U_D_A'), h['U_D_A']),
-                xytext=(CHAIN.index('U_D_A') - 0.4, h['U_D_A'] + 0.1),
-                color='tab:orange', fontsize=9)
+    ax.annotate('+ contar\n(augmentado)', xy=(CHAIN.index('U_D_A'), h['U_D_A']),
+                xytext=(CHAIN.index('U_D_A') - 0.7, h['U_D_A'] + 0.1),
+                color='tab:orange', fontsize=8)
 axes[0].set_ylabel('utilidad esperada')
 plt.tight_layout(); plt.show()""")
 
@@ -179,10 +179,15 @@ print(pd.DataFrame(filas).to_string(index=False))""")
 # ===================================================================
 md(r"""## Capa 3 — El promedio como cascada (con el techo como cota)
 
-Cada barra es cuánto bienestar agrega cada capacidad respecto a la anterior; la de
-"contar" es el eslabón nuevo. El techo de información total $U^{\max}$ NO es otra
-tecnología de testeo, es una cota superior, así que va como línea punteada y la
-cascada termina en $U^D_A$. El espacio entre la última barra y la línea es el
+Cada barra es cuánto bienestar agrega cada capacidad respecto a la anterior. La
+primera es el testeo individual; cada siguiente suma un poder: agrupar muestras,
+solapar pools, **adaptar** (ser dinámico, es decir elegir cada test según la
+historia, frente a fijar todo de antemano) y **contar** (usar el test augmentado de
+conteo en vez del binario). Dos precisiones para no confundir: "adaptar" es
+estático→dinámico, no es el greedy; y esta figura compara óptimos exactos (DP), no
+heurísticas. La barra de "contar" es exactamente el eslabón nuevo $U^D_A - U^D$. El
+techo $U^{\max}$ no es otra tecnología de testeo sino una cota superior, así que va
+como línea punteada y la cascada termina en $U^D_A$; el hueco hasta la línea es el
 margen que ninguna política, ni la augmented óptima, puede recuperar.""")
 
 code(r"""N_show = 5
@@ -190,7 +195,7 @@ m = df[df['N'] == N_show][CHAIN].mean()
 niveles = CHAIN[:-1]  # la cascada llega hasta U_D_A; U_max es cota
 incs = [m[niveles[0]]] + [m[niveles[i]] - m[niveles[i-1]]
                           for i in range(1, len(niveles))]
-etq = ['single', 'pool NO', 'pool O', 'adaptar', 'CONTAR']
+etq = ['individual', '+ agrupar', '+ solapar', '+ adaptar', '+ contar']
 colores = ['0.6'] * len(niveles); colores[-1] = 'tab:orange'
 
 fig, ax = plt.subplots(figsize=(8, 4.5))
