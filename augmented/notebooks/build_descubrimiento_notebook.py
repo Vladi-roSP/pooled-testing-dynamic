@@ -188,7 +188,7 @@ corridas independientes (el workflow de probes y este barrido).
 
 ¿Se puede demostrar que el beneficio del conteo es monótono en $B$ y nulo en $B=1$
 en general (no solo empíricamente)? ¿Hay una cota del beneficio en función del
-horizonte? ¿La saturación en $G$ tiene una explicación en cerrado (un $G^\*$ a
+horizonte? ¿La saturación en $G$ tiene una explicación en cerrado (un $G^{*}$ a
 partir del cual el conteo no añade información útil)?""")
 
 nbf.write(nb, OUT)
