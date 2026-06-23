@@ -131,13 +131,15 @@ The size of that gap --- the welfare value of counting --- is the quantity this
 paper measures.
 
 \begin{example}[Counting deduces what binary cannot]
-Let $N=3$ with tests $t_1=\{0,1\}$ and $t_2=\{1,2\}$. Suppose the augmented
-results are $r_1=1$ and $r_2=0$. From $r_2=0$ we learn individuals $1$ and $2$
-are healthy; combined with $r_1=1$ we deduce individual $0$ is \emph{infected}
-with certainty --- without ever testing $0$ alone. A binary planner seeing
-$t_1{=}+,\,t_2{=}-$ learns the same about $1$ and $2$ but, in overlapping
-designs with intermediate counts, the binary outcome generally loses the
-cross-test arithmetic that pins down the remaining individuals.
+Let $N=3$ with tests $t_1=\{0,1,2\}$ and $t_2=\{1,2\}$, both returning a count of
+$1$. The augmented planner learns there is exactly one infected individual in the
+whole group and exactly one among $\{1,2\}$; that single infection must lie in
+$\{1,2\}$, so individual $0$ is \emph{healthy} with certainty --- and a
+deduced-healthy individual is precisely what can later be harvested for welfare. A
+binary planner sees both pools as positive and can conclude nothing about $0$:
+$t_1{=}+$ is already implied by $t_2{=}+$. It is the exact count, not the binary
+outcome, that frees individual $0$ --- and this gap is what overlapping designs
+with intermediate counts turn into welfare.
 \end{example}
 
 \section{Posterior Inference under Augmented Pooled Testing}
