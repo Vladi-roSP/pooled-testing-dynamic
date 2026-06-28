@@ -41,8 +41,7 @@ pooled-testing-dynamic/
 │   ├── data/, models/, figures/, training/
 │   └── slurm_scripts/
 ├── Action_Plan.md
-├── README.md
-└── solver_context.md
+└── README.md
 ```
 
 ---

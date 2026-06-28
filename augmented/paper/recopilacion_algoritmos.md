@@ -266,7 +266,7 @@ Distinción código-vs-nota clara. CÓDIGO QUE CORRE en `classical/solvers/`: do
 - **Ubicación:** `classical/solvers/milpSample.py:solveDynamic` (752-827) y `greedyDynamicSample.py:solveDynamic` (671-746); evaluadores `analyzeTree`/`analyzeTreeGibbs`/`analyzeTreeSample`
 - **Idea / diferencia:** calcula la DAPTS óptima exacta: enumera todos los pools ≤G y evalúa recursivamente el bienestar esperado ramificando pos/neg con `bayesTheorem`, tomando el argmax global del árbol. Es el techo U_A^D. No es greedy.
 - **Estado:** experimental.
-- **Hallazgos:** `benchmark_tesis_papers.md`: factible solo N≤10,G≤10,B≤5; data a gran escala solo N=G=5,B=3; complejidad O(S^B·B·G·2^(B(G+1))). Existe versión re-implementada y verificada en `augmented/solver.py` (`solve_optimal_dapts`, n≤14), documentada en `solver_context.md`. El gap greedy-vs-óptimo (1.5 vs 1.75) se mide contra este DP.
+- **Hallazgos:** `benchmark_tesis_papers.md`: factible solo N≤10,G≤10,B≤5; data a gran escala solo N=G=5,B=3; complejidad O(S^B·B·G·2^(B(G+1))). Existe versión re-implementada y verificada en `augmented/solver.py` (`solve_optimal_dapts`, n≤14). El gap greedy-vs-óptimo (1.5 vs 1.75) se mide contra este DP.
 
 ### Selector miope exacto de un test (`solveConicSingle` / MICOP)
 - **Ubicación:** `classical/solvers/milpSample.py:solveConicSingle` (294-342); duplicado en `greedyDynamicSample.py:294` y `trial.py:5`

@@ -38,6 +38,8 @@ augmented/**/*.out
 
 # Local study guides / working notes
 docs/study_guides/
+augmented/paper/plan_estudio.md
+docs/notes/*_solver_context.md
 
 # Notas personales de sesiones (no subir)
 *_personales.*

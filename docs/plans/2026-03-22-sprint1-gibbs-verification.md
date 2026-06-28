@@ -1,7 +1,5 @@
 # Sprint 1 Gibbs Verification Implementation Plan
 
-
-
 **Goal:** Add Phase 3 Sprint 1 Gibbs verification coverage and a standalone convergence analysis script in `augmented/`.
 
 **Architecture:** Extend `augmented/tests.py` with deliberate slow verification tests that compare Gibbs posterior estimates and Gibbs-based greedy expected utility against exact counting on small instances. Add a separate `augmented/gibbs_analysis.py` script that prints convergence tables for fixed instances without changing any existing production logic.

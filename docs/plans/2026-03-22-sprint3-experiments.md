@@ -1,7 +1,5 @@
 # Sprint 3 Experiments Implementation Plan
 
-
-
 **Goal:** Add a standalone Sprint 3 experiment runner that writes incremental CSV results for the main scale study plus VIP, utility-modulation, and large-G sweeps.
 
 **Architecture:** Create `augmented/sprint3_experiments.py` as a companion to `augmented/overnight_experiments.py`, reusing its incremental CSV and GC patterns while adding task-specific instance generators and measurement helpers. Keep timing, warning, and CSV-writing logic centralized so all experiment families share the same behavior.

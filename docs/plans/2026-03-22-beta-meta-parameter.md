@@ -1,7 +1,5 @@
 # Beta Meta-parameter Implementation Plan
 
-
-
 **Goal:** Add a standalone beta-reward greedy module that augments myopic pool selection with exact expected information gain and prints Sprint 2 benchmark tables.
 
 **Architecture:** Create `augmented/infection_reward_greedy.py` as a self-contained companion to `augmented/greedy.py`. Keep the core beta-greedy policy exact over test outcomes, and restrict randomized scenario generation to the reporting helpers `run_vip_benchmark()` and `run_beta_sweep()`.
