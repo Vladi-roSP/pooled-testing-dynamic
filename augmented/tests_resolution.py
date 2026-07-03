@@ -105,6 +105,18 @@ def test_curve_is_nontrivial_somewhere():
     assert curve[-1]["value"] - curve[0]["value"] > 1e-6, curve
 
 
+from augmented.experiments_resolution import default_instances, sweep
+
+
+def test_sweep_smoke():
+    rows = sweep(default_instances()[:1])  # una instancia, rápido
+    assert len(rows) >= 1
+    keys = {"label", "n", "B", "G", "cap", "value", "frac"}
+    assert keys.issubset(rows[0].keys()), rows[0]
+    # respeta el régimen exacto (Global Constraints): n <= 6
+    assert all(row["n"] <= 6 for row in rows)
+
+
 # ---- Test runner ----
 if __name__ == "__main__":
     test_fns = sorted(
