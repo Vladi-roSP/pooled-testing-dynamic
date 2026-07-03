@@ -27,6 +27,40 @@ def test_bin_of_truncation():
         assert all(bin_of(r, cap) >= 1 for r in range(1, 8))
 
 
+from augmented.solver import solve_optimal_dapts
+from augmented.classical_solver import solve_classical_dynamic
+
+
+def _instance():
+    # instancia chica, determinista (sin RNG): n=4, B=2, G=3
+    p = [0.3, 0.5, 0.2, 0.7]
+    u = [1.0, 2.0, 3.0, 1.0]
+    return p, u, 2, 3
+
+
+def test_cap_none_equals_counting():
+    p, u, B, G = _instance()
+    v_default, _ = solve_optimal_dapts(p, u, B, G)
+    v_none, _ = solve_optimal_dapts(p, u, B, G, cap=None)
+    assert abs(v_default - v_none) < 1e-12, (v_default, v_none)
+
+
+def test_cap1_equals_classical_binary():
+    p, u, B, G = _instance()
+    v_cap1, _ = solve_optimal_dapts(p, u, B, G, cap=1)
+    v_bin, _ = solve_classical_dynamic(p, u, B, G)
+    assert abs(v_cap1 - v_bin) < 1e-9, (v_cap1, v_bin)
+
+
+def test_cap_below_one_rejected():
+    p, u, B, G = _instance()
+    try:
+        solve_optimal_dapts(p, u, B, G, cap=0)
+    except ValueError:
+        return
+    raise AssertionError("cap=0 debió lanzar ValueError (fundiría {0,1})")
+
+
 # ---- Test runner ----
 if __name__ == "__main__":
     test_fns = sorted(

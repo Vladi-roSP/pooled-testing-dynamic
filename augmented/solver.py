@@ -7,20 +7,24 @@ State = (step k, remaining_set, cleared_mask)
   cleared_mask:  individuals proven healthy
 """
 
-from augmented.core import all_pools, test_result
+from augmented.core import all_pools, test_result, bin_of
 from augmented.strategy import DAPTS
 
 _MAX_N = 14
 
 
-def solve_optimal_dapts(p, u, B, G):
+def solve_optimal_dapts(p, u, B, G, cap=None):
     """Solve for the optimal DAPTS via brute-force DP.
 
+    cap: cuantizador de truncamiento del conteo (min(r, cap)).
+         None = conteo completo (augmented); 1 = binario clásico.
     Returns (optimal_value, optimal_policy).
     """
     n = len(p)
     if n > _MAX_N:
         raise ValueError(f"Brute-force requires n <= {_MAX_N}, got {n}")
+    if cap is not None and cap < 1:
+        raise ValueError(f"cap must isolate {{0}} (cap >= 1); got {cap}")
     if n == 0:
         return 0.0, DAPTS(B)
 
@@ -67,15 +71,15 @@ def solve_optimal_dapts(p, u, B, G):
         best_value, best_pool = -1.0, 0
 
         for pool in pools:
-            # Partition remaining profiles by outcome r
+            # Partition remaining profiles by observed bin
             buckets = {}
             for z in remaining:
-                r = test_result(pool, z)
-                buckets.setdefault(r, []).append(z)
+                b = bin_of(test_result(pool, z), cap)
+                buckets.setdefault(b, []).append(z)
 
             ev = 0.0
-            for r, z_list in buckets.items():
-                new_cleared = cleared_mask | pool if r == 0 else cleared_mask
+            for b, z_list in buckets.items():
+                new_cleared = cleared_mask | pool if b == 0 else cleared_mask
                 sub_val, _ = dp(k + 1, frozenset(z_list), new_cleared)
                 ev += sub_val
 
@@ -105,13 +109,13 @@ def solve_optimal_dapts(p, u, B, G):
 
         buckets = {}
         for z in remaining:
-            r = test_result(best_pool, z)
-            buckets.setdefault(r, []).append(z)
+            b = bin_of(test_result(best_pool, z), cap)
+            buckets.setdefault(b, []).append(z)
 
-        for r, z_list in buckets.items():
-            new_cleared = cleared_mask | best_pool if r == 0 else cleared_mask
+        for b, z_list in buckets.items():
+            new_cleared = cleared_mask | best_pool if b == 0 else cleared_mask
             reconstruct(k + 1, frozenset(z_list), new_cleared,
-                        history + ((best_pool, r),))
+                        history + ((best_pool, b),))
 
     reconstruct(0, all_z, 0, ())
     return optimal_value, policy
