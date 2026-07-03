@@ -88,6 +88,23 @@ def test_fraction_endpoints():
         assert -1e-9 <= pt["frac"] <= 1.0 + 1e-9
 
 
+def test_b1_collapse():
+    # §2: con B=1 el resultado no condiciona decisiones futuras; los tres
+    # canales coinciden. La curva debe ser plana en B=1.
+    p, u, G = [0.3, 0.5, 0.2, 0.7], [1.0, 2.0, 3.0, 1.0], 3
+    curve = resolution_curve(p, u, 1, G)
+    vals = [pt["value"] for pt in curve]
+    assert max(vals) - min(vals) < 1e-9, vals
+
+
+def test_curve_is_nontrivial_somewhere():
+    # Con B>=2 debe existir una instancia donde el conteo separe al binario
+    # (si no, no habría curva que medir). Instancia con horizonte y prior mixto.
+    p, u, B, G = [0.05, 0.5, 0.5, 0.95], [3.0, 1.0, 1.0, 3.0], 2, 3
+    curve = resolution_curve(p, u, B, G)
+    assert curve[-1]["value"] - curve[0]["value"] > 1e-6, curve
+
+
 # ---- Test runner ----
 if __name__ == "__main__":
     test_fns = sorted(
