@@ -107,3 +107,13 @@ def all_pools_from_mask(active_mask, G, include_empty=True):
 def test_result(pool_mask, z_mask):
     """Augmented test result r(t, Z) = |t ∩ Z| (count of infected in pool)."""
     return popcount(pool_mask & z_mask)
+
+
+def bin_of(r, cap):
+    """Cuantizador de truncamiento del conteo r a un bin.
+
+    cap is None  -> conteo completo (identidad): devuelve r.
+    cap (int)    -> min(r, cap). Con cap >= 1 el bin 0 es exactamente {0}
+                    (aísla {0}); cap = 1 es el régimen binario (0 vs >=1).
+    """
+    return r if cap is None else min(r, cap)
