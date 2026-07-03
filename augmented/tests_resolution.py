@@ -61,6 +61,33 @@ def test_cap_below_one_rejected():
     raise AssertionError("cap=0 debió lanzar ValueError (fundiría {0,1})")
 
 
+from augmented.resolution_curve import cap_chain, resolution_curve, fraction_captured
+
+
+def test_cap_chain():
+    assert cap_chain(3) == [1, 2, 3]
+    assert cap_chain(1) == [1]
+
+
+def test_curve_monotone_nondecreasing():
+    p, u, B, G = _instance()
+    curve = resolution_curve(p, u, B, G)
+    vals = [pt["value"] for pt in curve]
+    # monotonía por refinamiento: U no decreciente en cap
+    for a, b in zip(vals, vals[1:]):
+        assert a <= b + 1e-12, vals
+    assert [pt["cap"] for pt in curve] == cap_chain(G)
+
+
+def test_fraction_endpoints():
+    p, u, B, G = _instance()
+    fc = fraction_captured(resolution_curve(p, u, B, G))
+    assert abs(fc[0]["frac"] - 0.0) < 1e-9      # cap=1 (binario) captura 0
+    assert abs(fc[-1]["frac"] - 1.0) < 1e-9     # conteo captura 1
+    for pt in fc:
+        assert -1e-9 <= pt["frac"] <= 1.0 + 1e-9
+
+
 # ---- Test runner ----
 if __name__ == "__main__":
     test_fns = sorted(
