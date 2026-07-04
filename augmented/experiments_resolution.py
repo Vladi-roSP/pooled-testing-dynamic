@@ -22,6 +22,15 @@ def default_instances():
         {"label": "media_n5", "p": [0.3, 0.5, 0.2, 0.7, 0.4], "u": [1, 2, 3, 1, 2], "B": 3, "G": 3},
         {"label": "alta_n5", "p": [0.6, 0.7, 0.5, 0.8, 0.55], "u": [1, 2, 3, 1, 2], "B": 3, "G": 3},
         {"label": "horizonte_b1_n4", "p": [0.3, 0.5, 0.2, 0.7], "u": [1, 2, 3, 1], "B": 1, "G": 3},
+        # G=4: cap_chain=[1,2,3,4] tiene dos niveles interiores (cap=2,3);
+        # a G=3 el único interior (cap=2) siempre satura en frac=1.0.
+        {"label": "media_n5_g4", "p": [0.3, 0.5, 0.4, 0.6, 0.35], "u": [1, 2, 3, 1, 2], "B": 3, "G": 4},
+        {"label": "alta_n5_g4", "p": [0.5, 0.6, 0.55, 0.65, 0.45], "u": [3, 1, 2, 1, 2], "B": 3, "G": 4},
+        # media_n5_g4 y alta_n5_g4 (n=5) saturan igual en cap=2 (frac=1.0):
+        # a n=5 con G=4 el pool máximo (4 de 5 activos) deja muy poco margen
+        # para que r=3 sea informativo. Con n=6 sí aparece un punto interior
+        # genuino (cap=2 < 1.0 antes de saturar en cap=3).
+        {"label": "mixta_n6_g4", "p": [0.15, 0.25, 0.35, 0.45, 0.55, 0.65], "u": [1, 2, 3, 1, 2, 3], "B": 3, "G": 4},
     ]
 
 

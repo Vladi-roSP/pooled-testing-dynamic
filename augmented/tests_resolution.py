@@ -115,6 +115,9 @@ def test_sweep_smoke():
     assert keys.issubset(rows[0].keys()), rows[0]
     # respeta el régimen exacto (Global Constraints): n <= 6
     assert all(row["n"] <= 6 for row in rows)
+    # chequeo barato (sin correr el barrido completo): TODAS las instancias
+    # declaradas deben respetar el régimen exacto N<=6, no solo la primera.
+    assert all(len(inst["p"]) <= 6 for inst in default_instances())
 
 
 # ---- Test runner ----
