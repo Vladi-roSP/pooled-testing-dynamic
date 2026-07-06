@@ -1,4 +1,4 @@
-id,baseline_utility,health_probability
+id,baseline_utility,clearance_probability
 1,2.4375,0.994804
 2,2.60417,0.995707
 3,2.70833,0.996352

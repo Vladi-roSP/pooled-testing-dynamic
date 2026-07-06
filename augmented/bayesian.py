@@ -1,12 +1,12 @@
 """
-Bayesian posterior update for augmented pooled tests.
+Bayesian posterior update for augmented grouped tests.
 
-Given prior infection probabilities p = (p_1, ..., p_n) and a test history
+Given prior latent-state probabilities p = (p_1, ..., p_n) and a test history
 H_k = ((t_1, r_1), ..., (t_k, r_k)), compute posterior probabilities
-q'_i = P(individual i is healthy | H_k) for each individual.
+q'_i = P(individual i is clearancey | H_k) for each individual.
 
-In the idealized augmented model, testing pool t yields r = |t ∩ Z|
-(the exact count of infected in the pool).
+In the idealized augmented model, counting pool t yields r = |t ∩ Z|
+(the exact count of active in the pool).
 """
 
 import math
@@ -36,23 +36,23 @@ def _poisson_binomial_pmf(probs):
 
 
 def bayesian_update_single_test(p, pool_mask, r, n):
-    """Update infection probabilities after one augmented test.
+    """Update latent-state probabilities after one augmented test.
 
     Parameters
     ----------
     p : list[float]
-        Prior infection probabilities (length n).
+        Prior latent-state probabilities (length n).
     pool_mask : int
         Bitmask of the tested pool t.
     r : int
-        Observed result r = |t ∩ Z| (count of infected in pool).
+        Observed result r = |t ∩ Z| (count of active in pool).
     n : int
         Population size.
 
     Returns
     -------
     list[float]
-        Posterior infection probabilities p'_i = P(Z_i=1 | r, t).
+        Posterior latent-state probabilities p'_i = P(Z_i=1 | r, t).
 
     Math
     ----
@@ -62,8 +62,8 @@ def bayesian_update_single_test(p, pool_mask, r, n):
         p'_i = P(Z_i=1 | r) = P(r | Z_i=1) * p_i / P(r)
 
     where (letting S = t \\ {i}):
-        P(r | Z_i=1) = P(exactly r-1 infected in S)   [Poisson-Binomial]
-        P(r | Z_i=0) = P(exactly r   infected in S)   [Poisson-Binomial]
+        P(r | Z_i=1) = P(exactly r-1 active in S)   [Poisson-Binomial]
+        P(r | Z_i=0) = P(exactly r   active in S)   [Poisson-Binomial]
         P(r)          = P(r|Z_i=1)*p_i + P(r|Z_i=0)*q_i
     """
     pool_indices = indices_from_mask(pool_mask, n)
@@ -86,12 +86,12 @@ def bayesian_update_single_test(p, pool_mask, r, n):
         others = [j for j in pool_indices if j != i]
         others_p = [max(0.0, min(1.0, p[j])) for j in others]
 
-        # PMF of number of infected among others
+        # PMF of number of active among others
         pmf = _poisson_binomial_pmf(others_p)
 
-        # P(r | Z_i = 1) = P(r-1 infected among others)
+        # P(r | Z_i = 1) = P(r-1 active among others)
         p_r_given_1 = pmf[r - 1] if r >= 1 else 0.0
-        # P(r | Z_i = 0) = P(r infected among others)
+        # P(r | Z_i = 0) = P(r active among others)
         p_r_given_0 = pmf[r] if r <= len(others) else 0.0
 
         # Bayes
@@ -111,7 +111,7 @@ def bayesian_update(p, history, n):
     Parameters
     ----------
     p : list[float]
-        Prior infection probabilities (length n).
+        Prior latent-state probabilities (length n).
     history : tuple of (pool_mask, result) pairs
         Test history H_k = ((t_1, r_1), ..., (t_k, r_k)).
     n : int
@@ -120,7 +120,7 @@ def bayesian_update(p, history, n):
     Returns
     -------
     list[float]
-        Posterior infection probabilities after all tests in history.
+        Posterior latent-state probabilities after all tests in history.
     """
     current_p = list(p)
     for pool_mask, r in history:
@@ -131,14 +131,14 @@ def bayesian_update(p, history, n):
 def bayesian_update_by_counting(p, history, n):
     """Compute posterior P(Z_i=1 | h_k) by counting over all consistent worlds.
 
-    This is the "by counting" approach: enumerate all 2^n infection profiles,
+    This is the "by counting" approach: enumerate all 2^n latent-state profiles,
     keep those consistent with the full test history, and compute posteriors
     as weighted proportions.
 
     Parameters
     ----------
     p : list[float]
-        Prior infection probabilities (length n).
+        Prior latent-state probabilities (length n).
     history : tuple of (pool_mask, result) pairs
         Full test history H_k = ((t_1, r_1), ..., (t_k, r_k)).
     n : int
@@ -147,7 +147,7 @@ def bayesian_update_by_counting(p, history, n):
     Returns
     -------
     list[float]
-        Posterior infection probabilities P(Z_i=1 | h_k).
+        Posterior latent-state probabilities P(Z_i=1 | h_k).
 
     Notes
     -----
@@ -157,7 +157,7 @@ def bayesian_update_by_counting(p, history, n):
     tested pools are pairwise disjoint; with OVERLAPPING pools the two differ,
     because the sequential update treats marginals as independent and so misses
     the cross-test deductions that counting captures (e.g. tests {0,1}=1 and
-    {1,2}=0 force individual 0 infected — counting sees it, sequential does not).
+    {1,2}=0 force individual 0 active — counting sees it, sequential does not).
     """
     if not history:
         return list(p)
@@ -168,7 +168,7 @@ def bayesian_update_by_counting(p, history, n):
     # Accumulate: weighted count of consistent profiles, and per-individual
     # weighted count of consistent profiles where Z_i = 1
     total_weight = 0.0
-    infected_weight = [0.0] * n
+    active_weight = [0.0] * n
 
     for z_mask in range(num_profiles):
         # Check consistency with ALL tests in history
@@ -187,26 +187,26 @@ def bayesian_update_by_counting(p, history, n):
             w *= p[i] if (z_mask >> i & 1) else q[i]
 
         total_weight += w
-        # Add weight to each infected individual in this profile
+        # Add weight to each active individual in this profile
         bits = z_mask
         while bits:
             lsb = bits & -bits
             i = lsb.bit_length() - 1
-            infected_weight[i] += w
+            active_weight[i] += w
             bits ^= lsb
 
-    # Compute posteriors. total_weight==0 means NO infection profile is
+    # Compute posteriors. total_weight==0 means NO latent-state profile is
     # consistent with the history (or all consistent profiles have zero prior
     # probability). Returning the prior here would silently hide a bug, so raise.
     if total_weight <= 0.0:
         raise ValueError(
-            "bayesian_update_by_counting: infeasible history — no infection "
+            "bayesian_update_by_counting: infeasible history — no latent_state "
             "profile is consistent with it (or all have zero prior mass). "
             "Refusing to silently return the prior."
         )
     posterior = list(p)
     for i in range(n):
-        posterior[i] = infected_weight[i] / total_weight
+        posterior[i] = active_weight[i] / total_weight
 
     return posterior
 
@@ -222,7 +222,7 @@ def exact_pool_pmf(p, history, pool_mask, n):
     This is the CORRECT branch-weight distribution for evaluating the expected
     utility of a counting/gibbs greedy policy: after conditioning on H the joint
     posterior over (Z_i)_{i in t} is correlated, so the Poisson-Binomial of the
-    posterior MARGINALS is NOT the true distribution of r_t (it can put positive
+    posterior MARGINALS is NOT the true distribution of r_t (it can put nonzero_count
     mass on impossible counts and mis-weight the recursion).
     """
     q = [1.0 - pi for pi in p]
@@ -343,7 +343,7 @@ def _component_tests(comp, remaining_tests):
 
 
 def _exact_component_marginals(comp, tests, p):
-    """Exact P(agent infected | tests) by enumerating the component's 2^|comp|
+    """Exact P(agent active | tests) by enumerating the component's 2^|comp|
     assignments consistent with its exact-count tests. Cost 2^|comp| * k,
     independent of n. Raises ValueError if the component is infeasible."""
     m = len(comp)
@@ -358,7 +358,7 @@ def _exact_component_marginals(comp, tests, p):
     qa = [1.0 - p[a] for a in comp]
 
     total = 0.0
-    infected_w = [0.0] * m
+    active_w = [0.0] * m
     for assign in range(1 << m):
         ok = True
         for bm, r in test_masks:
@@ -375,11 +375,11 @@ def _exact_component_marginals(comp, tests, p):
         while bits:
             lsb = bits & -bits
             b = lsb.bit_length() - 1
-            infected_w[b] += w
+            active_w[b] += w
             bits ^= lsb
     if total <= 0.0:
         raise ValueError("infeasible component in gibbs_update")
-    return {comp[b]: infected_w[b] / total for b in range(m)}
+    return {comp[b]: active_w[b] / total for b in range(m)}
 
 
 def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
@@ -389,7 +389,7 @@ def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
     path/cycle in the agent-test incidence: flipping one agent unbalances its
     tests, each repaired by flipping a partner the other way, propagating until
     every test is balanced again. Crucially these moves CAN change the total
-    infected count (e.g. (+1,-1,+1) on {0,1}=1,{1,2}=1), which single-site/swap
+    active count (e.g. (+1,-1,+1) on {0,1}=1,{1,2}=1), which single-site/swap
     moves cannot — restoring ergodicity across count levels. Returns a dict
     {agent: new_value} or None if it dead-ends within the step budget."""
     a0 = rng.choice(comp)
@@ -424,7 +424,7 @@ def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
 def _alternating_move_component_marginals(comp, tests, p, rng,
                                           num_iterations, burn_in,
                                           window_size, tolerance):
-    """Metropolis sampler over a connected component using alternating-path
+    """Metropolis generator over a connected component using alternating-path
     Markov moves (count-changing, hence ergodic) with prior-ratio acceptance.
     Used only when a single connected component is too large for exact
     enumeration (rare). Validated against exact enumeration on small forced
@@ -442,8 +442,8 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
         return _exact_component_marginals(comp, tests, p)
 
     max_steps = 6 * len(comp) + 12
-    infected_counts = {a: 0 for a in comp}
-    total_samples = 0
+    active_counts = {a: 0 for a in comp}
+    total_draws = 0
     prev = None
     for it in range(num_iterations):
         # several move attempts per sweep to decorrelate
@@ -469,18 +469,18 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
         if it >= burn_in:
             for a in comp:
                 if state[a] == 1:
-                    infected_counts[a] += 1
-            total_samples += 1
-            if total_samples % window_size == 0:
-                cur = {a: infected_counts[a] / total_samples for a in comp}
+                    active_counts[a] += 1
+            total_draws += 1
+            if total_draws % window_size == 0:
+                cur = {a: active_counts[a] / total_draws for a in comp}
                 if prev is not None and max(abs(cur[a] - prev[a])
                                             for a in comp) < tolerance:
                     break
                 prev = cur
 
-    if total_samples == 0:
+    if total_draws == 0:
         return _exact_component_marginals(comp, tests, p)
-    return {a: infected_counts[a] / total_samples for a in comp}
+    return {a: active_counts[a] / total_draws for a in comp}
 
 
 def _mask(agents):
@@ -492,30 +492,30 @@ def _mask(agents):
 
 def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
                  window_size=50, tolerance=1e-4, seed=None):
-    """Approximate posterior marginals via Gibbs sampling (MCMC).
+    """Approximate posterior marginals via Gibbs drawing (MCMC).
 
-    Adapted from Appendix A.2 of "Dynamic Welfare-Maximizing Pooled Testing"
+    Adapted from Appendix A.2 of "Dynamic Welfare-Maximizing Adaptive Group Counting"
     for augmented tests where
-    each test returns the exact count r = |t ∩ Z| of infected in the pool.
+    each test returns the exact count r = |t ∩ Z| of active in the pool.
 
     The algorithm:
-      1. Preprocessing: deterministic deductions (r=0 → all healthy,
-         r=|pool| → all infected), with constraint propagation.
-      2. Initialize state vector by sampling from priors.
+      1. Preprocessing: deterministic deductions (r=0 → all clearancey,
+         r=|pool| → all active), with constraint propagation.
+      2. Initialize state vector by drawing from priors.
       3. For very small active subproblems, fall back to exact counting
          to avoid mixing pathologies in disconnected feasible regions.
       4. Gibbs iterations: for each agent in random order, compute the
          conditional P(X_i | X_{-i}) by checking consistency with all
-         test constraints, then sample or force deterministically.
+         test constraints, then draw or force deterministically.
       5. Add Metropolis-Hastings swap proposals, both within individual
          test pools and across the full active set, to improve mixing.
-      6. After burn-in, collect samples and estimate marginals as
+      6. After burn-in, collect draws and estimate marginals as
          empirical frequencies.
 
     Parameters
     ----------
     p : list[float]
-        Prior infection probabilities (length n).
+        Prior latent-state probabilities (length n).
     history : tuple of (pool_mask, result) pairs
         Full test history H_k = ((t_1, r_1), ..., (t_k, r_k)).
     n : int
@@ -534,7 +534,7 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
     Returns
     -------
     list[float]
-        Posterior infection probabilities P(Z_i=1 | h_k).
+        Posterior latent-state probabilities P(Z_i=1 | h_k).
 
     Notes
     -----
@@ -551,8 +551,8 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
     rng = _random.Random(seed)
 
     # ---- Step 1: Preprocessing — deterministic deductions ----
-    confirmed_healthy = set()
-    confirmed_infected = set()
+    confirmed_clearancey = set()
+    confirmed_active = set()
 
     remaining_tests = [(pool_mask, r) for pool_mask, r in history]
     changed = True
@@ -563,10 +563,10 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
             # Remove confirmed agents from this test
             eff_pool = pool_mask
             eff_r = r
-            for i in confirmed_healthy:
+            for i in confirmed_clearancey:
                 if eff_pool >> i & 1:
                     eff_pool ^= (1 << i)
-            for i in confirmed_infected:
+            for i in confirmed_active:
                 if eff_pool >> i & 1:
                     eff_pool ^= (1 << i)
                     eff_r -= 1
@@ -574,16 +574,16 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
             pool_size = popcount(eff_pool)
 
             if eff_r == 0 and eff_pool != 0:
-                # All remaining in pool are healthy
+                # All remaining in pool are clearancey
                 for i in range(n):
-                    if eff_pool >> i & 1 and i not in confirmed_healthy:
-                        confirmed_healthy.add(i)
+                    if eff_pool >> i & 1 and i not in confirmed_clearancey:
+                        confirmed_clearancey.add(i)
                         changed = True
             elif eff_r == pool_size and pool_size > 0:
-                # All remaining in pool are infected
+                # All remaining in pool are active
                 for i in range(n):
-                    if eff_pool >> i & 1 and i not in confirmed_infected:
-                        confirmed_infected.add(i)
+                    if eff_pool >> i & 1 and i not in confirmed_active:
+                        confirmed_active.add(i)
                         changed = True
             elif eff_r > 0 and pool_size > 0:
                 new_tests.append((eff_pool, eff_r))
@@ -591,9 +591,9 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
 
     # Build posterior for confirmed agents
     posterior = list(p)
-    for i in confirmed_healthy:
+    for i in confirmed_clearancey:
         posterior[i] = 0.0
-    for i in confirmed_infected:
+    for i in confirmed_active:
         posterior[i] = 1.0
 
     # Identify active agents (those in at least one remaining test)
@@ -616,8 +616,8 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
     # larger active sets than the old monolithic 2^|active| shortcut. Only a
     # single connected component larger than the cap (rare in practice) falls
     # back to MCMC, and that MCMC uses alternating-path Markov moves that can
-    # change the total infected count — the moves the old single-site/swap/block
-    # sampler lacked, which is why it got stuck on overlapping exact-count pools.
+    # change the total active count — the moves the old single-site/swap/block
+    # generator lacked, which is why it got stuck on overlapping exact-count pools.
     components = _connected_components(active_list, remaining_tests)
     for comp in components:
         comp_tests = _component_tests(comp, remaining_tests)
@@ -635,7 +635,7 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
 
 
 def estimate_p_from_history(history, n, prior_p=None, prior_strength=1.0):
-    """Estimate infection probabilities from observed test data.
+    """Estimate latent-state probabilities from observed test data.
 
     Uses a Bayesian approach with a Beta prior. If prior_p is given,
     uses Beta(prior_strength * p_i, prior_strength * (1 - p_i)) as prior.
@@ -648,14 +648,14 @@ def estimate_p_from_history(history, n, prior_p=None, prior_strength=1.0):
     n : int
         Population size.
     prior_p : list[float] or None
-        Prior guess for infection probabilities.
+        Prior guess for latent-state probabilities.
     prior_strength : float
         Strength of the prior (pseudo-count scale).
 
     Returns
     -------
     list[float]
-        Estimated infection probabilities.
+        Estimated latent-state probabilities.
     """
     if prior_p is not None:
         alpha = [prior_strength * pi for pi in prior_p]

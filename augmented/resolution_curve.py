@@ -30,8 +30,13 @@ def fraction_captured(curve):
     v_bin = curve[0]["value"]
     v_count = curve[-1]["value"]
     denom = v_count - v_bin
+    # A flat curve (no counting benefit, e.g. B=1) has denom == 0 in exact
+    # arithmetic, but different caps sum the DP over different bucketings, so
+    # denom can be tiny FP noise instead of a clean 0. Treat anything within
+    # tolerance as "no benefit to capture" (frac 0) rather than dividing by
+    # noise, which would blow frac far outside [0, 1].
     out = []
     for pt in curve:
-        frac = 0.0 if denom <= 0 else (pt["value"] - v_bin) / denom
+        frac = 0.0 if denom <= 1e-12 else (pt["value"] - v_bin) / denom
         out.append({"cap": pt["cap"], "value": pt["value"], "frac": frac})
     return out

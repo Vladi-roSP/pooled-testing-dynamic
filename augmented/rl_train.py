@@ -11,7 +11,7 @@ Instance sources
 ----------------
   random : (p, u) drawn from a fixed-seed RNG  -> 100% reproducible.
   csv    : parsed from a classical data CSV (classical/data/data_N*_*.csv);
-           agent tuples are (id, utility, health), so p = 1 - health.
+           agent tuples are (id, utility, clearance), so p = 1 - clearance.
 
 Usage
 -----
@@ -48,37 +48,37 @@ DEFAULT_MODEL_DIR = os.path.join(os.path.dirname(__file__), "rl_models")
 # Instance sources
 # -------------------------------------------------------------------
 
-def random_instance_sampler(n, util_choices=(1.0, 2.0, 3.0),
+def random_instance_generator(n, util_choices=(1.0, 2.0, 3.0),
                             p_low=0.0, p_high=1.0):
-    """A sampler that draws a fresh random (p, u) on each call.
+    """A generator that draws a fresh random (p, u) on each call.
 
     Reproducible: the env feeds in its seeded gymnasium Generator.
     """
     util_choices = np.asarray(util_choices, dtype=float)
 
-    def sampler(rng):
+    def generator(rng):
         p = rng.uniform(p_low, p_high, size=n)
         u = rng.choice(util_choices, size=n)
         return p.tolist(), u.tolist()
 
-    return sampler
+    return generator
 
 
-def fixed_instance_sampler(p, u):
-    """A sampler that always returns the same (p, u) -- ignores the RNG."""
+def fixed_instance_generator(p, u):
+    """A generator that always returns the same (p, u) -- ignores the RNG."""
     p, u = list(p), list(u)
 
-    def sampler(rng):
+    def generator(rng):
         return list(p), list(u)
 
-    return sampler
+    return generator
 
 
 def load_csv_instances(path):
     """Parse a classical data CSV.
 
     Returns (instances, N, B, G) where instances is a list of (p, u) with
-    p = 1 - health and u = utility. N, B, G come from the file name.
+    p = 1 - clearance and u = utility. N, B, G come from the file name.
     """
     base = os.path.basename(path)
     m = re.search(r"N(\d+)_d\d+_B(\d+)_G(\d+)", base)
@@ -96,13 +96,13 @@ def load_csv_instances(path):
     return instances, N, B, G
 
 
-def csv_instance_sampler(instances):
-    """A sampler that picks one (p, u) uniformly from a list of instances."""
-    def sampler(rng):
+def csv_instance_generator(instances):
+    """A generator that picks one (p, u) uniformly from a list of instances."""
+    def generator(rng):
         p, u = instances[int(rng.integers(len(instances)))]
         return list(p), list(u)
 
-    return sampler
+    return generator
 
 
 # -------------------------------------------------------------------
@@ -155,11 +155,11 @@ def train(env, timesteps, seed, model_path=None, verbose=0):
 def evaluate_exact_vs_dp(model, p, u, B, G):
     """Exact expected utility of the PPO policy vs the DP optimum.
 
-    The PPO policy value is computed exactly: enumerate every infection
+    The PPO policy value is computed exactly: enumerate every latent_state
     profile z, play the policy deterministically, weight by Pr(z).
     """
     n = len(p)
-    env = DaptsExactEnv(fixed_instance_sampler(p, u), B, G, n)
+    env = DaptsExactEnv(fixed_instance_generator(p, u), B, G, n)
     weights = prior_profile_weights(p)
 
     policy_value = 0.0
@@ -179,13 +179,13 @@ def evaluate_exact_vs_dp(model, p, u, B, G):
     return policy_value, dp_value
 
 
-def evaluate_bucket(model, instance_sampler, B, G, N, n_episodes, seed):
+def evaluate_bucket(model, instance_generator, B, G, N, n_episodes, seed):
     """Mean PPO reward vs mean greedy reward over matched episodes.
 
     Each episode uses the same instance and same true profile z for both
     PPO (test 1 = PPO pool) and greedy (test 1 = greedy pool).
     """
-    env = DaptsBucketEnv(instance_sampler, B, G, N)
+    env = DaptsBucketEnv(instance_generator, B, G, N)
     ppo_rewards, greedy_rewards = [], []
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=seed + ep)
@@ -214,13 +214,13 @@ def _run_exact(args):
     else:
         n, B, G = args.n, args.B, args.G
         rng = np.random.default_rng(args.seed)
-        p, u = random_instance_sampler(n)(rng)
+        p, u = random_instance_generator(n)(rng)
         print(f"[exact] random instance (seed={args.seed}): n={n}, B={B}, G={G}")
 
     print(f"  p = {[round(x, 4) for x in p]}")
     print(f"  u = {[round(x, 2) for x in u]}")
 
-    env = DaptsExactEnv(fixed_instance_sampler(p, u), B, G, n)
+    env = DaptsExactEnv(fixed_instance_generator(p, u), B, G, n)
     model_path = os.path.join(args.model_dir, f"exact_n{n}_B{B}_G{G}_s{args.seed}")
     print(f"  training PPO for {args.timesteps} timesteps (seed={args.seed})...")
     model = train(env, args.timesteps, args.seed, model_path,
@@ -237,23 +237,23 @@ def _run_exact(args):
 def _run_bucket(args):
     if args.source == "csv":
         instances, N, B, G = load_csv_instances(args.csv)
-        sampler = csv_instance_sampler(instances)
+        generator = csv_instance_generator(instances)
         print(f"[bucket] CSV {os.path.basename(args.csv)}: "
               f"{len(instances)} instances, N={N}, B={B}, G={G}")
     else:
         N, B, G = args.N, args.B, args.G
-        sampler = random_instance_sampler(N)
+        generator = random_instance_generator(N)
         print(f"[bucket] random instances (seed={args.seed}): "
               f"N={N}, B={B}, G={G}")
 
-    env = DaptsBucketEnv(sampler, B, G, N)
+    env = DaptsBucketEnv(generator, B, G, N)
     model_path = os.path.join(args.model_dir, f"bucket_N{N}_B{B}_G{G}_s{args.seed}")
     print(f"  training PPO for {args.timesteps} timesteps (seed={args.seed})...")
     model = train(env, args.timesteps, args.seed, model_path,
                   verbose=1 if args.verbose else 0)
 
     ppo_mean, greedy_mean = evaluate_bucket(
-        model, sampler, B, G, N, args.eval_episodes, args.seed + 10_000)
+        model, generator, B, G, N, args.eval_episodes, args.seed + 10_000)
     print(f"\n--- Evaluación sobre {args.eval_episodes} episodios ---")
     print(f"  PPO    (utilidad media) : {ppo_mean:.4f}")
     print(f"  greedy (utilidad media) : {greedy_mean:.4f}")

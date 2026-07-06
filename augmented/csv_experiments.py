@@ -1,5 +1,5 @@
 """
-CSV-based experiment runner with graph generation for augmented pooled testing.
+CSV-based experiment runner with graph generation for augmented adaptive group counting.
 
 Follows the same methodology as classical/solvers/ but for augmented strategies.
 Generates random instances, saves to CSV, evaluates all strategies, and produces
@@ -8,7 +8,7 @@ comparison plots (box plots, violin plots, scatter plots).
 Usage:
     python augmented/csv_experiments.py                    # default: n=5, B=2, G=3
     python augmented/csv_experiments.py --n 4 --B 2 --G 2  # custom parameters
-    python augmented/csv_experiments.py --samples 200      # more samples
+    python augmented/csv_experiments.py --draws 200      # more draws
 
 Output:
     augmented/data/results_N{n}_B{B}_G{G}.csv  — raw results
@@ -45,9 +45,9 @@ from augmented.greedy import (
 # -------------------------------------------------------------------
 
 def create_agents(n, u_integers=False, seed=None):
-    """Generate random agents with (id, utility, infection_probability).
+    """Generate random agents with (id, utility, latent_state_probability).
 
-    Matches the format from classical/solvers/greedyDynamicSample.py.
+    Matches the format from classical/solvers/greedyDynamicDraw.py.
     """
     rng = random.Random(seed)
     agents = []
@@ -56,16 +56,16 @@ def create_agents(n, u_integers=False, seed=None):
             utility = rng.randint(1, 100)
         else:
             utility = rng.random()
-        health_prob = rng.random()  # probability of being HEALTHY
-        agents.append((i, utility, health_prob))
+        clearance_prob = rng.random()  # probability of being CLEARANCEY
+        agents.append((i, utility, clearance_prob))
     return agents
 
 
 def agents_to_p_u(agents):
     """Convert agents list to (p, u) vectors.
 
-    agents[i] = (id, utility, health_probability)
-    p[i] = 1 - health_probability (infection probability)
+    agents[i] = (id, utility, clearance_probability)
+    p[i] = 1 - clearance_probability (latent-state probability)
     u[i] = utility
     """
     p = [1.0 - a[2] for a in agents]
@@ -73,41 +73,41 @@ def agents_to_p_u(agents):
     return p, u
 
 
-def generate_health_status(agents, seed=None):
-    """Generate a random health status vector based on agent probabilities.
+def generate_clearance_status(agents, seed=None):
+    """Generate a random clearance status vector based on agent probabilities.
 
-    Returns list of 0/1 where 0 = infected, 1 = healthy.
+    Returns list of 0/1 where 0 = active, 1 = clearancey.
     """
     rng = random.Random(seed)
     status = []
-    for _, _, health_prob in agents:
-        status.append(1 if rng.random() < health_prob else 0)
+    for _, _, clearance_prob in agents:
+        status.append(1 if rng.random() < clearance_prob else 0)
     return status
 
 
-def generate_dataset(n, num_samples, B, G, u_integers=False, base_seed=42):
+def generate_dataset(n, num_draws, B, G, u_integers=False, base_seed=42):
     """Generate a dataset of random instances.
 
     Returns a DataFrame with columns:
       - agents: string representation of agent tuples
-      - healthStatus: string representation of health outcomes
-      - p_i columns: individual infection probabilities
+      - clearanceStatus: string representation of clearance outcomes
+      - p_i columns: individual latent-state probabilities
       - u_i columns: individual utilities
-      - avg_p: average infection probability
+      - avg_p: average latent-state probability
     """
     rows = []
-    for s in range(num_samples):
+    for s in range(num_draws):
         seed_agents = base_seed + s
-        seed_health = base_seed + num_samples + s
+        seed_clearance = base_seed + num_draws + s
 
         agents = create_agents(n, u_integers=u_integers, seed=seed_agents)
-        health_status = generate_health_status(agents, seed=seed_health)
+        clearance_status = generate_clearance_status(agents, seed=seed_clearance)
         p, u = agents_to_p_u(agents)
 
         row = {
-            'sample_id': s,
+            'draw_id': s,
             'agents': str(agents),
-            'healthStatus': str(health_status),
+            'clearanceStatus': str(clearance_status),
             'avg_p': sum(p) / len(p),
         }
         for i in range(n):
@@ -162,7 +162,7 @@ def run_all_evaluations(df, n, B, G, include_optimal=True):
 
     for idx, row in df.iterrows():
         if (idx + 1) % 10 == 0 or idx == 0:
-            print(f"  Evaluating sample {idx + 1}/{total}...")
+            print(f"  Evaluating draw {idx + 1}/{total}...")
 
         results = evaluate_row(row, n, B, G, include_optimal=include_optimal)
         all_results.append(results)
@@ -206,7 +206,7 @@ def plot_box_comparison(df, n, B, G, output_dir):
     fig, ax = plt.subplots(figsize=(12, 6))
     sns.boxplot(data=plot_df, orient='h', ax=ax, palette='viridis')
     ax.set_title(f"Strategy Performance Comparison\nn={n}, B={B}, G={G} "
-                 f"({len(df)} samples)")
+                 f"({len(df)} draws)")
     ax.set_xlabel("Expected Utility")
     plt.tight_layout()
     path = os.path.join(output_dir, f'boxplot_N{n}_B{B}_G{G}.png')
@@ -237,7 +237,7 @@ def plot_violin_comparison(df, n, B, G, output_dir):
     sns.violinplot(data=plot_df, orient='h', inner='box',
                    linewidth=1.2, ax=ax, palette='Set2')
     ax.set_title(f"Strategy Performance Distributions\nn={n}, B={B}, G={G} "
-                 f"({len(df)} samples)")
+                 f"({len(df)} draws)")
     ax.set_xlabel("Expected Utility")
     plt.tight_layout()
     path = os.path.join(output_dir, f'violin_N{n}_B{B}_G{G}.png')
@@ -247,7 +247,7 @@ def plot_violin_comparison(df, n, B, G, output_dir):
 
 
 def plot_augmented_benefit(df, n, B, G, output_dir):
-    """Scatter plot: augmented benefit over classical vs avg infection rate."""
+    """Scatter plot: augmented benefit over classical vs avg latent-state rate."""
     if 'U_D_classical' not in df.columns or 'U_D_A_optimal' not in df.columns:
         return
 
@@ -262,10 +262,10 @@ def plot_augmented_benefit(df, n, B, G, output_dir):
                     linewidth=0.5)
     plt.colorbar(sc, ax=ax, label='Augmented Benefit (%)')
 
-    ax.set_xlabel('Average Infection Probability')
+    ax.set_xlabel('Average Latent-State Probability')
     ax.set_ylabel('Augmented Benefit over Classical (%)')
-    ax.set_title(f"Augmented vs Classical: Benefit by Infection Rate\n"
-                 f"n={n}, B={B}, G={G} ({len(df)} samples)")
+    ax.set_title(f"Augmented vs Classical: Benefit by LatentState Rate\n"
+                 f"n={n}, B={B}, G={G} ({len(df)} draws)")
     ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
 
     plt.tight_layout()
@@ -306,7 +306,7 @@ def plot_greedy_vs_optimal(df, n, B, G, output_dir):
         ax.legend()
 
     fig.suptitle(f"Greedy vs Optimal Comparison\nn={n}, B={B}, G={G} "
-                 f"({len(df)} samples)", fontsize=14, y=1.02)
+                 f"({len(df)} draws)", fontsize=14, y=1.02)
     plt.tight_layout()
     path = os.path.join(output_dir, f'greedy_vs_optimal_N{n}_B{B}_G{G}.png')
     fig.savefig(path, dpi=300, bbox_inches='tight')
@@ -331,7 +331,7 @@ def plot_sequential_vs_counting(df, n, B, G, output_dir):
     ax.set_xlabel('Greedy (Sequential Bayesian)')
     ax.set_ylabel('Greedy (Full-History Counting)')
     ax.set_title(f"Sequential vs Counting Bayesian Greedy\n"
-                 f"n={n}, B={B}, G={G} ({len(df)} samples)")
+                 f"n={n}, B={B}, G={G} ({len(df)} draws)")
     ax.legend()
 
     # Add colorbar
@@ -339,7 +339,7 @@ def plot_sequential_vs_counting(df, n, B, G, output_dir):
                                 norm=plt.Normalize(df['avg_p'].min(),
                                                    df['avg_p'].max()))
     sm.set_array([])
-    plt.colorbar(sm, ax=ax, label='Avg Infection Probability')
+    plt.colorbar(sm, ax=ax, label='Avg Latent-State Probability')
 
     plt.tight_layout()
     path = os.path.join(output_dir, f'seq_vs_counting_N{n}_B{B}_G{G}.png')
@@ -348,11 +348,11 @@ def plot_sequential_vs_counting(df, n, B, G, output_dir):
     print(f"  Saved: {path}")
 
 
-def plot_performance_by_infection_rate(df, n, B, G, output_dir):
-    """Line plot: strategy performance vs infection rate bins."""
+def plot_performance_by_latent_state_rate(df, n, B, G, output_dir):
+    """Line plot: strategy performance vs latent-state rate bins."""
     setup_plot_style()
 
-    # Bin by average infection rate
+    # Bin by average latent-state rate
     df = df.copy()
     df['p_bin'] = pd.cut(df['avg_p'], bins=5, labels=False)
     bin_edges = pd.cut(df['avg_p'], bins=5, retbins=True)[1]
@@ -380,10 +380,10 @@ def plot_performance_by_infection_rate(df, n, B, G, output_dir):
 
     ax.set_xticks(range(len(bin_labels)))
     ax.set_xticklabels(bin_labels, rotation=45)
-    ax.set_xlabel('Average Infection Probability Range')
+    ax.set_xlabel('Average Latent-State Probability Range')
     ax.set_ylabel('Mean Expected Utility')
-    ax.set_title(f"Strategy Performance by Infection Rate\n"
-                 f"n={n}, B={B}, G={G} ({len(df)} samples)")
+    ax.set_title(f"Strategy Performance by LatentState Rate\n"
+                 f"n={n}, B={B}, G={G} ({len(df)} draws)")
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 
     plt.tight_layout()
@@ -403,7 +403,7 @@ def generate_all_plots(df, n, B, G, output_dir):
     plot_augmented_benefit(df, n, B, G, output_dir)
     plot_greedy_vs_optimal(df, n, B, G, output_dir)
     plot_sequential_vs_counting(df, n, B, G, output_dir)
-    plot_performance_by_infection_rate(df, n, B, G, output_dir)
+    plot_performance_by_latent_state_rate(df, n, B, G, output_dir)
 
 
 # -------------------------------------------------------------------
@@ -413,7 +413,7 @@ def generate_all_plots(df, n, B, G, output_dir):
 def print_summary(df, n, B, G):
     """Print summary statistics."""
     print(f"\n{'='*70}")
-    print(f"  RESULTS SUMMARY: n={n}, B={B}, G={G}, {len(df)} samples")
+    print(f"  RESULTS SUMMARY: n={n}, B={B}, G={G}, {len(df)} draws")
     print(f"{'='*70}")
 
     strategy_cols = [c for c in df.columns if c.startswith('U_')]
@@ -449,19 +449,19 @@ def print_summary(df, n, B, G):
 # Item 1: B >= 3 experiments — divergence between greedy variants
 # -------------------------------------------------------------------
 
-def generate_dataset_p_range(n, num_samples, p_range=(0.0, 1.0),
+def generate_dataset_p_range(n, num_draws, p_range=(0.0, 1.0),
                               u_integers=False, base_seed=42):
-    """Generate dataset with infection probabilities in a given range."""
+    """Generate dataset with latent-state probabilities in a given range."""
     rng = random.Random(base_seed)
     rows = []
-    for s in range(num_samples):
+    for s in range(num_draws):
         p_lo, p_hi = p_range
         p = [rng.uniform(p_lo, p_hi) for _ in range(n)]
         if u_integers:
             u = [rng.randint(1, 100) for _ in range(n)]
         else:
             u = [rng.uniform(0.5, 5.0) for _ in range(n)]
-        row = {'sample_id': s, 'avg_p': sum(p) / len(p)}
+        row = {'draw_id': s, 'avg_p': sum(p) / len(p)}
         for i in range(n):
             row[f'p_{i}'] = p[i]
             row[f'u_{i}'] = u[i]
@@ -487,24 +487,24 @@ def evaluate_row_greedy_variants(row, n, B, G):
     return results
 
 
-def run_b_comparison(n=5, B_values=None, G=3, num_samples=100,
+def run_b_comparison(n=5, B_values=None, G=3, num_draws=100,
                      p_range=(0.1, 0.5), seed=42):
     """Run experiments across multiple B values to show greedy divergence.
 
-    Returns a DataFrame with results for each (B, sample_id).
+    Returns a DataFrame with results for each (B, draw_id).
     """
     if B_values is None:
         B_values = [2, 3, 4, 5]
 
     all_rows = []
-    df_base = generate_dataset_p_range(n, num_samples, p_range=p_range,
+    df_base = generate_dataset_p_range(n, num_draws, p_range=p_range,
                                         base_seed=seed)
 
     for B in B_values:
-        print(f"\n  B={B}: evaluating {num_samples} instances (n={n}, G={G})...")
+        print(f"\n  B={B}: evaluating {num_draws} instances (n={n}, G={G})...")
         for idx, row in df_base.iterrows():
             if (idx + 1) % 25 == 0:
-                print(f"    sample {idx + 1}/{num_samples}")
+                print(f"    draw {idx + 1}/{num_draws}")
             results = evaluate_row_greedy_variants(row, n, B, G)
             result_row = dict(row)
             result_row['B'] = B
@@ -564,15 +564,15 @@ def plot_b_divergence(df, n, G, output_dir):
 
 
 # -------------------------------------------------------------------
-# Item 3: High infection rate experiments at scale
+# Item 3: High latent-state rate experiments at scale
 # -------------------------------------------------------------------
 
-def run_high_infection_experiment(n_values=None, B_values=None, G=3,
-                                  num_samples=200, seed=42):
-    """Run experiments with high infection rates to confirm augmented benefit.
+def run_high_latent_state_experiment(n_values=None, B_values=None, G=3,
+                                  num_draws=200, seed=42):
+    """Run experiments with high latent-state rates to confirm augmented benefit.
 
-    Tests Francisco's hypothesis: augmented benefit increases with infection rate.
-    Returns a DataFrame with results across infection rate regimes.
+    Tests Francisco's hypothesis: augmented benefit increases with latent-state rate.
+    Returns a DataFrame with results across latent-state rate regimes.
     """
     if n_values is None:
         n_values = [5]
@@ -592,12 +592,12 @@ def run_high_infection_experiment(n_values=None, B_values=None, G=3,
             for regime_name, p_lo, p_hi in regimes:
                 print(f"\n  n={n}, B={B}, G={G}, regime={regime_name} "
                       f"(p∈[{p_lo},{p_hi}])...")
-                df = generate_dataset_p_range(n, num_samples,
+                df = generate_dataset_p_range(n, num_draws,
                                                p_range=(p_lo, p_hi),
                                                base_seed=seed)
                 for idx, row in df.iterrows():
                     if (idx + 1) % 50 == 0:
-                        print(f"    sample {idx + 1}/{num_samples}")
+                        print(f"    draw {idx + 1}/{num_draws}")
                     results = evaluate_row_greedy_variants(row, n, B, G)
                     result_row = dict(row)
                     result_row['n'] = n
@@ -617,12 +617,12 @@ def run_high_infection_experiment(n_values=None, B_values=None, G=3,
     return pd.DataFrame(all_rows)
 
 
-def plot_high_infection_results(df, output_dir):
-    """Plot augmented benefit by infection rate regime."""
+def plot_high_latent_state_results(df, output_dir):
+    """Plot augmented benefit by latent-state rate regime."""
     setup_plot_style()
 
     if 'augmented_benefit' not in df.columns:
-        print("  No augmented_benefit column — skipping high infection plot")
+        print("  No augmented_benefit column — skipping high latent_state plot")
         return
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
@@ -637,9 +637,9 @@ def plot_high_infection_results(df, output_dir):
     colors = ['#2ecc71', '#f39c12', '#e74c3c', '#8e44ad']
     for patch, color in zip(bp['boxes'], colors[:len(regimes_present)]):
         patch.set_facecolor(color)
-    ax.set_xlabel('Infection Rate Regime')
+    ax.set_xlabel('LatentState Rate Regime')
     ax.set_ylabel('Augmented Benefit (%)')
-    ax.set_title('Augmented Benefit by Infection Regime')
+    ax.set_title('Augmented Benefit by LatentState Regime')
     ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
 
     # Scatter: avg_p vs benefit with trend
@@ -656,14 +656,14 @@ def plot_high_infection_results(df, output_dir):
         ax.plot(x_trend, trend(x_trend), 'r-', linewidth=2,
                 label=f'Trend (quadratic)')
         ax.legend()
-    ax.set_xlabel('Average Infection Probability')
+    ax.set_xlabel('Average Latent-State Probability')
     ax.set_ylabel('Augmented Benefit (%)')
-    ax.set_title('Augmented Benefit vs Infection Rate')
+    ax.set_title('Augmented Benefit vs LatentState Rate')
     plt.colorbar(sc, ax=ax, label='Avg p')
 
-    fig.suptitle('High Infection Rate Analysis', fontsize=14, y=1.02)
+    fig.suptitle('High LatentState Rate Analysis', fontsize=14, y=1.02)
     plt.tight_layout()
-    path = os.path.join(output_dir, 'high_infection_analysis.png')
+    path = os.path.join(output_dir, 'high_latent_state_analysis.png')
     fig.savefig(path, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f"  Saved: {path}")
@@ -679,11 +679,11 @@ def plot_high_infection_results(df, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='CSV-based experiments for augmented pooled testing')
+        description='CSV-based experiments for augmented adaptive group counting')
     parser.add_argument('--n', type=int, default=5, help='Population size')
     parser.add_argument('--B', type=int, default=2, help='Test budget')
     parser.add_argument('--G', type=int, default=3, help='Max pool size')
-    parser.add_argument('--samples', type=int, default=100,
+    parser.add_argument('--draws', type=int, default=100,
                         help='Number of random instances')
     parser.add_argument('--seed', type=int, default=42, help='Base random seed')
     parser.add_argument('--no-optimal', action='store_true',
@@ -701,14 +701,14 @@ def main():
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(fig_dir, exist_ok=True)
 
-    print(f"Augmented Pooled Testing: CSV Experiments")
-    print(f"  n={n}, B={B}, G={G}, samples={args.samples}, seed={args.seed}")
+    print(f"Augmented Adaptive Group Counting: CSV Experiments")
+    print(f"  n={n}, B={B}, G={G}, draws={args.draws}, seed={args.seed}")
     print()
 
     # Step 1: Generate dataset
     print("Step 1: Generating random instances...")
     t0 = time.time()
-    df = generate_dataset(n, args.samples, B, G,
+    df = generate_dataset(n, args.draws, B, G,
                           u_integers=args.u_integers, base_seed=args.seed)
     print(f"  Generated {len(df)} instances in {time.time() - t0:.1f}s")
 

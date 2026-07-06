@@ -1,5 +1,5 @@
 Constraints,algorithm,Average Expected Welfare
-"N = G = 3, B = 2",Non-Pooled,0.6671 (0.03448)
+"N = G = 3, B = 2",Non-Grouped,0.6671 (0.03448)
 "N = G = 3, B = 2",Augmented Counting Greedy,0.6817 (0.03714)
 "N = G = 3, B = 2",Augmented Greedy Dynamic,0.6817 (0.03714)
 "N = G = 3, B = 2",Static Non-Overlapping,0.6864 (0.03727)
@@ -7,7 +7,7 @@ Constraints,algorithm,Average Expected Welfare
 "N = G = 3, B = 2",Classical Dynamic Optimal,0.6972 (0.03878)
 "N = G = 3, B = 2",Augmented Dynamic Optimal,0.6999 (0.03891)
 "N = G = 3, B = 2",Upper Bound,0.7490 (0.04119)
-"N = G = 5, B = 3",Non-Pooled,1.0682 (0.03995)
+"N = G = 5, B = 3",Non-Grouped,1.0682 (0.03995)
 "N = G = 5, B = 3",Static Non-Overlapping,1.0941 (0.04175)
 "N = G = 5, B = 3",Augmented Counting Greedy,1.0958 (0.04228)
 "N = G = 5, B = 3",Augmented Greedy Dynamic,1.1013 (0.04262)

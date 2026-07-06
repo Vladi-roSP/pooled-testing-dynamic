@@ -12,7 +12,7 @@ class ItemSelectionEnv(gym.Env):
         self.num_items = num_items
         self.max_selection = max_selection
         
-        # Observation space: (Current Utility Sum, Product of Selected Health Values)
+        # Observation space: (Current Utility Sum, Product of Selected Clearance Values)
         self.observation_space = spaces.Box(low=0, high=100, shape=(2,), dtype=np.float32)
         
         # Action space: Select an item (0 to 49) or stop (50)
@@ -22,16 +22,16 @@ class ItemSelectionEnv(gym.Env):
     
     def reset(self):
         """Initialize a new episode."""
-        self.health_values = np.random.uniform(0, 1, self.num_items)
+        self.clearance_values = np.random.uniform(0, 1, self.num_items)
         self.utility_values = np.random.choice([0, 1, 2, 3], self.num_items, p=[0.25, 0.25, 0.25, 0.25])
         self.selected_items = []
         return self._get_state()
     
     def _get_state(self):
-        """Return state: (Current Utility Sum, Product of Selected Health Values)."""
+        """Return state: (Current Utility Sum, Product of Selected Clearance Values)."""
         current_utility_sum = sum(self.utility_values[i] for i in self.selected_items)
-        health_product = np.prod([self.health_values[i] for i in self.selected_items]) if self.selected_items else 1.0
-        return np.array([current_utility_sum, health_product], dtype=np.float32)
+        clearance_product = np.prod([self.clearance_values[i] for i in self.selected_items]) if self.selected_items else 1.0
+        return np.array([current_utility_sum, clearance_product], dtype=np.float32)
     
     def step(self, action):
         """Take a step in the environment."""
@@ -73,13 +73,13 @@ print("Model saved as dqn_item_selection")
 # Load and test trained model
 model = DQN.load("dqn_item_selection")
 
-def select_items(model, health_values, utility_values):
+def select_items(model, clearance_values, utility_values):
     """Runs the trained model on a specific instance of items."""
-    num_items = len(health_values)
+    num_items = len(clearance_values)
     env = ItemSelectionEnv(num_items=num_items, max_selection=5)
     
-    # Manually set the environment's health and utility values
-    env.health_values = np.array(health_values)
+    # Manually set the environment's clearance and utility values
+    env.clearance_values = np.array(clearance_values)
     env.utility_values = np.array(utility_values)
     env.selected_items = []
     
@@ -95,9 +95,9 @@ def select_items(model, health_values, utility_values):
     return env.selected_items, reward
 
 # Example usage with real data
-health_values = np.random.uniform(0, 1, 50)
+clearance_values = np.random.uniform(0, 1, 50)
 utility_values = np.random.choice([0, 1, 2, 3], 50, p=[0.25, 0.25, 0.25, 0.25])
 
-selected_items, final_reward = select_items(model, health_values, utility_values)
+selected_items, final_reward = select_items(model, clearance_values, utility_values)
 print(f"Selected Items: {selected_items}")
 print(f"Final Reward: {final_reward}")

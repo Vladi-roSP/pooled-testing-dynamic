@@ -16,9 +16,9 @@ from augmented.rl_env import DaptsBucketEnv
 def test_bucket_obs_stays_in_box_when_usum_exceeds_N():
     # N=3, G=3, utilities all 3 -> usum can reach 9 > N=3. The observation must
     # remain inside the declared observation_space.
-    def sampler(rng):
+    def generator(rng):
         return [0.3, 0.3, 0.3], [3.0, 3.0, 3.0]
-    env = DaptsBucketEnv(sampler, B=2, G=3, N=3)
+    env = DaptsBucketEnv(generator, B=2, G=3, N=3)
     obs, _ = env.reset(seed=0)
     assert env.observation_space.contains(obs), "reset obs outside Box"
     done = False
@@ -36,9 +36,9 @@ def test_bucket_obs_stays_in_box_when_usum_exceeds_N():
 def test_utility_bins_param_is_honored():
     # With utility_bins=4 the binning must be able to produce 4 distinct bins,
     # i.e. _category's utility component spans 0..3 (not capped at 3 fixed edges).
-    def sampler(rng):
+    def generator(rng):
         return [0.3] * 8, list(range(8))
-    env = DaptsBucketEnv(sampler, B=2, G=3, N=8, utility_bins=4)
+    env = DaptsBucketEnv(generator, B=2, G=3, N=8, utility_bins=4)
     # Number of interior+endpoint structure must yield exactly utility_bins bins.
     bins_seen = set()
     for u in np.linspace(0, env.utility_high, 50):

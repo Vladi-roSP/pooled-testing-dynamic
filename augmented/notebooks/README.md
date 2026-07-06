@@ -12,9 +12,9 @@ que los modulos Python en `augmented/` siguen siendo la fuente del codigo.
 | 02 | `large_trees_exploration.ipynb` | Intuicion visual con arboles de decision pequenos y comparaciones greedy/optimo. |
 | 03 | `combined_findings.ipynb` | Sintesis experimental amplia: efectos de valor, presupuesto, Gibbs, heuristicas y casos Nico. |
 | 04 | `phase3_findings.ipynb` | Hallazgos tecnicos de Phase 3: Gibbs, beta, large G y gaps. |
-| 05 | `05_heuristica_rl_combinado.ipynb` | Heuristica de independencia y pruebas RL tabulares. |
+| 05 | `05_heuristica_rl_combinado.ipynb` | Heuristica de independencia y consultas RL tabulares. |
 | 06 | `06_vw.ipynb` | Idea VW de super-nodos, equivalencias y limitaciones. |
-| 07 | `07_vw.ipynb` | Variante greedy/VW y primeras pruebas de RL. |
+| 07 | `07_vw.ipynb` | Variante greedy/VW y primeras consultas de RL. |
 | 08 | `paper_findings.ipynb` | Version curada para narrativa de paper. |
 | 09 | `paper_findings_executed.ipynb` | Version ejecutada de `paper_findings.ipynb`, util para revisar outputs. |
 

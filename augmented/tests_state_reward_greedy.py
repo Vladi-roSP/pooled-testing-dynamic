@@ -1,7 +1,7 @@
 """
-Unit tests for infection_reward_greedy.
+Unit tests for state_reward_greedy.
 
-Run with: python augmented/tests_infection_reward_greedy.py
+Run with: python augmented/tests_state_reward_greedy.py
 """
 
 import os
@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from augmented.core import mask_from_indices
 from augmented.greedy import greedy_myopic_expected_utility
-from augmented.infection_reward_greedy import (
+from augmented.state_reward_greedy import (
     _compute_info_gain,
     _beta_best_pool,
     greedy_myopic_beta_expected_utility,
@@ -19,7 +19,7 @@ from augmented.infection_reward_greedy import (
 )
 
 
-def test_info_gain_entropy_nonnegative():
+def test_info_gain_entropy_nonzero_count():
     p = [0.2, 0.3, 0.1]
     pool = mask_from_indices([0, 1])
     info_gain = _compute_info_gain(

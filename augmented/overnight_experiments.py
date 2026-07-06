@@ -220,7 +220,7 @@ def run_experiments(n_values, B_values, G_values, n_instances=10,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Overnight large-n experiments for pooled testing"
+        description="Overnight large-n experiments for adaptive group counting"
     )
     parser.add_argument(
         '--n', nargs='+', type=int,

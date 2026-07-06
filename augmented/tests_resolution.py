@@ -61,6 +61,42 @@ def test_cap_below_one_rejected():
     raise AssertionError("cap=0 debió lanzar ValueError (fundiría {0,1})")
 
 
+from augmented.simulator import apply_dapts
+
+
+def test_truncated_policy_is_executable():
+    # Una política con cap<G codifica sus historias por bins min(r,cap); el
+    # replay canónico (apply_dapts) debe binear el conteo observado con el
+    # mismo cuantizador. Instancia donde el pool jugado puede ver r>=2 bajo
+    # cap=1 (antes: KeyError en la búsqueda de política).
+    p = [0.4, 0.4, 0.4, 0.4, 0.4]
+    u = [2.0, 2.0, 2.0, 2.0, 2.0]
+    B, G = 2, 4
+    value, F = solve_optimal_dapts(p, u, B, G, cap=1)
+    assert F.cap == 1
+    realized = 0.0
+    q = [1.0 - pi for pi in p]
+    for z in range(1 << len(p)):
+        # no debe lanzar KeyError para ningún perfil realizable
+        _, _, u_real = apply_dapts(F, z, len(p), u)
+        wz = 1.0
+        for i in range(len(p)):
+            wz *= p[i] if (z >> i & 1) else q[i]
+        realized += wz * u_real
+    # el valor esperado replayado coincide con el valor del DP
+    assert abs(realized - value) < 1e-9, (realized, value)
+
+
+def test_flat_curve_fraction_stays_bounded():
+    # Curva plana (sin beneficio del conteo): frac debe quedar en [0,1] aun si
+    # denom es ruido de punto flotante en vez de 0 exacto.
+    curve = [{"cap": 1, "value": 3.0}, {"cap": 2, "value": 3.0 + 1e-15},
+             {"cap": 3, "value": 3.0}]
+    fc = fraction_captured(curve)
+    for pt in fc:
+        assert 0.0 <= pt["frac"] <= 1.0, fc
+
+
 from augmented.resolution_curve import cap_chain, resolution_curve, fraction_captured
 
 

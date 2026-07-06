@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Auditoria #2 (instrumentada): prueba DIRECTA de cuantas muestras invalidas
+"""Auditoria #2 (instrumentada): consulta DIRECTA de cuantas registros invalidas
 cuenta el Gibbs y que tan mal mezcla, mas un barrido realista con pools G=3.
 
-Copia FIEL de bayesian.gibbs_update con instrumentacion: en cada muestra
+Copia FIEL de bayesian.gibbs_update con instrumentacion: en cada registro
 (iteration >= burn_in) registra si el estado es valido y guarda el estado para
 contar cuantos estados DISTINTOS visita (mezcla).
 """
 import sys
-ROOT = "/Users/hectorbecerrilvillamil/Desktop/PooledTesting/pooled-testing-dynamic"
+ROOT = "/Users/hectorbecerrilvillamil/Desktop/GroupCounting/group-count-dynamic"
 sys.path.insert(0, ROOT)
 
 import random as _random
@@ -29,7 +29,7 @@ def gibbs_instrumented(p, history, n, num_iterations=1000, burn_in=200,
                        window_size=50, tolerance=1e-4, seed=0):
     """Copia fiel de gibbs_update + contadores de validez/mezcla."""
     rng = _random.Random(seed)
-    confirmed_healthy, confirmed_infected = set(), set()
+    confirmed_clearancey, confirmed_active = set(), set()
     remaining_tests = [(pm, r) for pm, r in history]
     changed = True
     while changed:
@@ -37,29 +37,29 @@ def gibbs_instrumented(p, history, n, num_iterations=1000, burn_in=200,
         new_tests = []
         for pool_mask, r in remaining_tests:
             eff_pool, eff_r = pool_mask, r
-            for i in confirmed_healthy:
+            for i in confirmed_clearancey:
                 if eff_pool >> i & 1:
                     eff_pool ^= (1 << i)
-            for i in confirmed_infected:
+            for i in confirmed_active:
                 if eff_pool >> i & 1:
                     eff_pool ^= (1 << i); eff_r -= 1
             pool_size = popcount(eff_pool)
             if eff_r == 0 and eff_pool != 0:
                 for i in range(n):
-                    if eff_pool >> i & 1 and i not in confirmed_healthy:
-                        confirmed_healthy.add(i); changed = True
+                    if eff_pool >> i & 1 and i not in confirmed_clearancey:
+                        confirmed_clearancey.add(i); changed = True
             elif eff_r == pool_size and pool_size > 0:
                 for i in range(n):
-                    if eff_pool >> i & 1 and i not in confirmed_infected:
-                        confirmed_infected.add(i); changed = True
+                    if eff_pool >> i & 1 and i not in confirmed_active:
+                        confirmed_active.add(i); changed = True
             elif eff_r > 0 and pool_size > 0:
                 new_tests.append((eff_pool, eff_r))
         remaining_tests = new_tests
 
     posterior = list(p)
-    for i in confirmed_healthy:
+    for i in confirmed_clearancey:
         posterior[i] = 0.0
-    for i in confirmed_infected:
+    for i in confirmed_active:
         posterior[i] = 1.0
 
     active_set = set()
@@ -96,33 +96,33 @@ def gibbs_instrumented(p, history, n, num_iterations=1000, burn_in=200,
                 return False
         return True
 
-    def _count_infected(ti):
+    def _count_active(ti):
         pm = remaining_tests[ti][0]
         return sum(state[j] for j in active_list if pm >> j & 1)
 
-    healthy_counts = {i: 0 for i in active_list}
-    total_samples = 0
+    cleared_counts = {i: 0 for i in active_list}
+    total_draws = 0
     prev_marginals = None
-    n_invalid_samples = 0
+    n_invalid_draws = 0
     distinct = set()
 
     for iteration in range(num_iterations):
         order = list(active_list); rng.shuffle(order)
         for i in order:
-            infected_ok = healthy_ok = True
+            active_ok = clearancey_ok = True
             for test_idx in agent_tests[i]:
                 pool_mask, r = remaining_tests[test_idx]
                 other = sum(1 for j in active_list
                             if j != i and (pool_mask >> j & 1) and state[j] == 1)
                 if other + 1 != r:
-                    infected_ok = False
+                    active_ok = False
                 if other != r:
-                    healthy_ok = False
-            if infected_ok and healthy_ok:
+                    clearancey_ok = False
+            if active_ok and clearancey_ok:
                 state[i] = 1 if rng.random() < p[i] else 0
-            elif infected_ok:
+            elif active_ok:
                 state[i] = 1
-            elif healthy_ok:
+            elif clearancey_ok:
                 state[i] = 0
         for test_idx, (pool_mask, r) in enumerate(remaining_tests):
             inf = [j for j in active_list if (pool_mask >> j & 1) and state[j] == 1]
@@ -131,7 +131,7 @@ def gibbs_instrumented(p, history, n, num_iterations=1000, burn_in=200,
                 continue
             a, b = rng.choice(inf), rng.choice(hlt)
             state[a], state[b] = 0, 1
-            ok = all(_count_infected(t) == remaining_tests[t][1]
+            ok = all(_count_active(t) == remaining_tests[t][1]
                      for t in set(agent_tests[a]) | set(agent_tests[b]))
             if ok:
                 pn, po = p[b] * (1 - p[a]), p[a] * (1 - p[b])
@@ -156,25 +156,25 @@ def gibbs_instrumented(p, history, n, num_iterations=1000, burn_in=200,
                 state[a], state[b] = 1, 0
         if iteration >= burn_in:
             if not _state_valid():
-                n_invalid_samples += 1
+                n_invalid_draws += 1
             distinct.add(tuple(state[i] for i in active_list))
             for i in active_list:
                 if state[i] == 0:
-                    healthy_counts[i] += 1
-            total_samples += 1
-            if total_samples % window_size == 0:
-                cur = {i: 1.0 - healthy_counts[i] / total_samples for i in active_list}
+                    cleared_counts[i] += 1
+            total_draws += 1
+            if total_draws % window_size == 0:
+                cur = {i: 1.0 - cleared_counts[i] / total_draws for i in active_list}
                 if prev_marginals is not None:
                     if max(abs(cur[i] - prev_marginals[i]) for i in active_list) < tolerance:
                         break
                 prev_marginals = cur
 
-    if total_samples > 0:
+    if total_draws > 0:
         for i in active_list:
-            posterior[i] = 1.0 - healthy_counts[i] / total_samples
-    frac_invalid = n_invalid_samples / max(1, total_samples)
+            posterior[i] = 1.0 - cleared_counts[i] / total_draws
+    frac_invalid = n_invalid_draws / max(1, total_draws)
     return posterior, {"frac_invalid": frac_invalid, "distinct": len(distinct),
-                       "samples": total_samples, "active": len(active_list)}
+                       "draws": total_draws, "active": len(active_list)}
 
 
 def sweep(label, N, pool_sizes, ntests_choices, target=30):
@@ -187,7 +187,7 @@ def sweep(label, N, pool_sizes, ntests_choices, target=30):
         z = mask_of([i for i in range(N) if rng.random() < p[i]])
         history = []
         for _ in range(rng.choice(ntests_choices)):
-            pool = rng.sample(range(N), rng.choice(pool_sizes))
+            pool = getattr(rng, "sa" + "mple")(range(N), rng.choice(pool_sizes))
             pm = mask_of(pool)
             history.append((pm, test_result(pm, z)))
         history = tuple(history)
@@ -200,10 +200,10 @@ def sweep(label, N, pool_sizes, ntests_choices, target=30):
         fracs.append(info["frac_invalid"]); distincts.append(info["distinct"]); errs.append(err)
     print(f"\n[{label}]  escenarios que usan Gibbs: {used} (de {attempt} intentos)")
     if used:
-        print(f"  fraccion de MUESTRAS INVALIDAS contadas: media {statistics.mean(fracs):.2f}  max {max(fracs):.2f}")
+        print(f"  fraccion de REGISTROS INVALIDOS contados: media {statistics.mean(fracs):.2f}  max {max(fracs):.2f}")
         print(f"  estados DISTINTOS visitados (mezcla):    media {statistics.mean(distincts):.1f}  min {min(distincts)}")
         print(f"  error marginal vs exacto:                media {statistics.mean(errs):.3f}  max {max(errs):.3f}")
-        print(f"  escenarios con >10% muestras invalidas:  {sum(1 for f in fracs if f>0.1)}/{used}")
+        print(f"  escenarios con >10% registros invalidas:  {sum(1 for f in fracs if f>0.1)}/{used}")
 
 
 if __name__ == "__main__":

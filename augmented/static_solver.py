@@ -1,9 +1,9 @@
 """
-Brute-force solvers for static pooled testing strategies.
+Brute-force solvers for static adaptive group counting strategies.
 
 Static = all B pools chosen up front (no adaptation based on results).
 Note: static strategies give the SAME utility whether tests are augmented
-or classical, because you don't adapt — only negative pools (r=0) matter.
+or classical, because you don't adapt — only zero_count pools (r=0) matter.
 
 U^s_NO — optimal static non-overlapping (disjoint pools)
 U^s_O  — optimal static overlapping (pools may share individuals)
@@ -16,7 +16,7 @@ _MAX_N = 14
 
 
 def _pool_expected_utility(pool, p, u, n):
-    """E[utility from a single pool] = P(all healthy) * Σ u_i for i in pool."""
+    """E[utility from a single pool] = P(all clearancey) * Σ u_i for i in pool."""
     pool_idx = indices_from_mask(pool, n)
     prob_clear = 1.0
     for i in pool_idx:
@@ -29,7 +29,7 @@ def solve_static_non_overlapping(p, u, B, G):
     """U^s_NO: optimal static strategy with B disjoint pools of size <= G.
 
     Enumerates all ways to choose B non-overlapping pools and picks
-    the assignment maximizing Σ_k P(pool_k all healthy) * Σ_{i∈pool_k} u_i.
+    the assignment maximizing Σ_k P(pool_k all clearancey) * Σ_{i∈pool_k} u_i.
 
     Returns (optimal_value, list_of_pool_masks).
     """
@@ -71,7 +71,7 @@ def solve_static_overlapping(p, u, B, G):
     """U^s_O: optimal static strategy with B (possibly overlapping) pools.
 
     Individual i is cleared if there EXISTS a pool containing i where
-    ALL members are healthy. Computed via brute-force over all 2^n profiles.
+    ALL members are clearancey. Computed via brute-force over all 2^n profiles.
 
     Returns (optimal_value, list_of_pool_masks).
     """
@@ -99,7 +99,7 @@ def solve_static_overlapping(p, u, B, G):
             # Which individuals get cleared?
             cleared = 0
             for pool in assignment:
-                if pool & z == 0:  # pool is all healthy under Z
+                if pool & z == 0:  # pool is all clearancey under Z
                     cleared |= pool
             # Utility
             util = 0.0

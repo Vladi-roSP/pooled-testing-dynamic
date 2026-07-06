@@ -1,7 +1,7 @@
 """
 Cross-verification module: generate synthetic test instances and export
-them in a format compatible with Nick's pooled-testing code at
-github.com/nrlopez03/pooled-testing.
+them in a format compatible with Nick's group-count code at
+github.com/nrlopez03/group-count.
 
 Workflow:
   1. generate_synthetic_instances()  -- create random instances
@@ -49,7 +49,7 @@ def generate_synthetic_instances(num_instances, n, B, G,
     G : int
         Maximum pool size per test.
     p_range : tuple of float
-        (lo, hi) range for each agent's probability of being healthy.
+        (lo, hi) range for each agent's probability of being clearancey.
         Each p_i is drawn from U[lo, hi].
     u_values : list of int/float or None
         Discrete set of utility values. Each agent's u_i is drawn
@@ -65,7 +65,7 @@ def generate_synthetic_instances(num_instances, n, B, G,
         Each dict has keys:
           id            -- integer instance identifier (0-indexed)
           n, B, G       -- problem parameters
-          agents        -- list of {id, utility, prob_healthy}
+          agents        -- list of {id, utility, prob_clearancey}
           seed          -- the per-instance seed used
     """
     if u_values is None:
@@ -83,7 +83,7 @@ def generate_synthetic_instances(num_instances, n, B, G,
             agents.append({
                 "id": i,
                 "utility": u_i,
-                "prob_healthy": round(p_i, 10),
+                "prob_clearancey": round(p_i, 10),
             })
 
         instances.append({
@@ -129,10 +129,10 @@ def export_instances_json(instances, filepath):
 def _extract_p_u(instance):
     """Extract p and u vectors from an instance dict.
 
-    NOTE: our solvers use p_i = P(infected), while the instance stores
-    prob_healthy.  Convert accordingly.
+    NOTE: our solvers use p_i = P(active), while the instance stores
+    prob_clearancey.  Convert accordingly.
     """
-    p = [1.0 - ag["prob_healthy"] for ag in instance["agents"]]
+    p = [1.0 - ag["prob_clearancey"] for ag in instance["agents"]]
     u = [float(ag["utility"]) for ag in instance["agents"]]
     return p, u
 
@@ -145,9 +145,9 @@ def evaluate_and_export(instances, filepath):
       - U_D               (optimal classical dynamic, exact DP -- only if n <= 14)
       - U_greedy          (myopic greedy with sequential Bayesian updates)
       - U_greedy_counting (myopic greedy with full-history counting updates)
-      - U_greedy_gibbs    (myopic greedy with Gibbs sampling updates)
+      - U_greedy_gibbs    (myopic greedy with Gibbs drawing updates)
       - U_max             (upper bound)
-      - U_single          (individual testing baseline)
+      - U_single          (individual counting baseline)
 
     Parameters
     ----------
@@ -230,7 +230,7 @@ def comparison_protocol():
     protocol = """\
 =======================================================================
   Cross-Verification Protocol
-  Our code  <-->  github.com/nrlopez03/pooled-testing
+  Our code  <-->  github.com/nrlopez03/group-count
 =======================================================================
 
 Step 1 -- Generate & export instances (this code)
@@ -247,17 +247,17 @@ Step 2 -- Load instances in Nick's code
         instances = json.load(f)
 
     Each instance is a dict with keys:
-        id, n, B, G, agents (list of {id, utility, prob_healthy}), seed
+        id, n, B, G, agents (list of {id, utility, prob_clearancey}), seed
 
     To convert to Nick's format:
         for inst in instances:
             n = inst["n"]
             B = inst["B"]
             G = inst["G"]
-            # NOTE: our prob_healthy = 1 - p_infected
-            p_infected = [1.0 - ag["prob_healthy"] for ag in inst["agents"]]
+            # NOTE: our prob_clearancey = 1 - p_active
+            p_active = [1.0 - ag["prob_clearancey"] for ag in inst["agents"]]
             utilities  = [ag["utility"] for ag in inst["agents"]]
-            # ... run Nick's solver with (p_infected, utilities, B, G)
+            # ... run Nick's solver with (p_active, utilities, B, G)
 
 Step 3 -- Compare outputs
 ------

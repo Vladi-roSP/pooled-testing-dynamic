@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CELLS = os.path.join(HERE, "resultados_cells.json")
 OUT = os.path.join(HERE, "notebook_resultados.ipynb")
 
-PORTADA = r"""# Resultados (graficas) — Dynamic Augmented Pooled Testing
+PORTADA = r"""# Resultados (graficas) — Dynamic Augmented Adaptive Group Counting
 
 Tres resultados del proyecto, cada uno como una grafica. Cada celda tiene sus
 parametros al inicio: cambialos y vuelve a correr para explorar. Todo sale de
@@ -31,7 +31,7 @@ _d = os.path.abspath(os.getcwd())
 while _d != os.path.dirname(_d) and not os.path.isfile(os.path.join(_d, "augmented", "__init__.py")):
     _d = os.path.dirname(_d)
 if not os.path.isfile(os.path.join(_d, "augmented", "__init__.py")):
-    _fb = "/Users/hectorbecerrilvillamil/Desktop/PooledTesting/pooled-testing-dynamic"
+    _fb = "/Users/hectorbecerrilvillamil/Desktop/GroupCounting/group-count-dynamic"
     if os.path.isfile(os.path.join(_fb, "augmented", "__init__.py")):
         _d = _fb
 if _d not in sys.path:

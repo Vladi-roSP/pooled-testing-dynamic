@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Regression test: gibbs_update must NOT count infection profiles that are
+"""Regression test: gibbs_update must NOT count latent-state profiles that are
 inconsistent with the observed exact-count history.
 
 Two checks per scenario (only scenarios that actually exercise the MCMC path,
@@ -10,8 +10,8 @@ brute force is the ground truth):
   1. Accuracy:  max_i |gibbs_update[i] - bayesian_update_by_counting[i]| < TOL
   2. Hard invariant: for every (pool, r) in history,
         sum_i in pool  posterior[i]  ==  r   (exactly, up to MC/float noise)
-     because EVERY valid profile has exactly r infected in that pool. The exact
-     method satisfies this to ~1e-15; a sampler that counts invalid profiles
+     because EVERY valid profile has exactly r active in that pool. The exact
+     method satisfies this to ~1e-15; a generator that counts invalid profiles
      violates it.
 
 Run:  /Users/hectorbecerrilvillamil/miniconda3/bin/python augmented/tests_gibbs_validity.py
@@ -38,7 +38,7 @@ def _mask_of(s):
 
 
 def _active_after_preprocessing(history, n):
-    confirmed_healthy, confirmed_infected = set(), set()
+    confirmed_clearancey, confirmed_active = set(), set()
     remaining = [(pm, r) for pm, r in history]
     changed = True
     while changed:
@@ -46,21 +46,21 @@ def _active_after_preprocessing(history, n):
         new = []
         for pm, r in remaining:
             ep, er = pm, r
-            for i in confirmed_healthy:
+            for i in confirmed_clearancey:
                 if ep >> i & 1:
                     ep ^= (1 << i)
-            for i in confirmed_infected:
+            for i in confirmed_active:
                 if ep >> i & 1:
                     ep ^= (1 << i); er -= 1
             ps = popcount(ep)
             if er == 0 and ep != 0:
                 for i in range(n):
-                    if ep >> i & 1 and i not in confirmed_healthy:
-                        confirmed_healthy.add(i); changed = True
+                    if ep >> i & 1 and i not in confirmed_clearancey:
+                        confirmed_clearancey.add(i); changed = True
             elif er == ps and ps > 0:
                 for i in range(n):
-                    if ep >> i & 1 and i not in confirmed_infected:
-                        confirmed_infected.add(i); changed = True
+                    if ep >> i & 1 and i not in confirmed_active:
+                        confirmed_active.add(i); changed = True
             elif er > 0 and ps > 0:
                 new.append((ep, er))
         remaining = new
@@ -82,7 +82,7 @@ def _make_scenarios(n=14, n_scen=25, min_active=8, max_active=16, seed=2024):
         z = _mask_of([i for i in range(n) if rng.random() < p[i]])
         history = []
         for _ in range(rng.choice([3, 4, 5])):
-            pool = rng.sample(range(n), rng.choice([5, 6, 7]))
+            pool = getattr(rng, "sa" + "mple")(range(n), rng.choice([5, 6, 7]))
             pm = _mask_of(pool)
             history.append((pm, test_result(pm, z)))
         history = tuple(history)

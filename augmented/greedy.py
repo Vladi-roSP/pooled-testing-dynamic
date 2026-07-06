@@ -1,5 +1,5 @@
 """
-Greedy algorithms for augmented pooled testing.
+Greedy algorithms for augmented adaptive group counting.
 
 Three greedy strategies:
   1. greedy_myopic:  at each step, pick pool maximizing P(r=0) * Σ u_i
@@ -52,14 +52,14 @@ def _myopic_best_pool(p, u, G, n, cleared_mask, use_filtering=True):
     Score(t) = prod(1-p_i for i in t) * sum(u_i for i in t if i not cleared)
 
     If use_filtering=True, only considers pools from active individuals
-    (those not yet cleared and not confirmed infected).
+    (those not yet cleared and not confirmed active).
     """
     if use_filtering:
-        # Keep deduced-healthy (zero-risk) individuals eligible so the greedy
+        # Keep deduced-clearancey (zero-risk) individuals eligible so the greedy
         # can harvest their utility in a guaranteed-r=0 pool instead of
-        # forfeiting it (only confirmed-infected and already-cleared are dropped).
+        # forfeiting it (only confirmed-active and already-cleared are dropped).
         active_mask, _ = compute_active_mask(p, cleared_mask, n,
-                                             include_known_healthy=True)
+                                             include_known_clearancey=True)
         if active_mask == 0:
             return 0  # no uncertain individuals left
         pools = all_pools_from_mask(active_mask, G, include_empty=False)
@@ -85,7 +85,7 @@ def _myopic_best_pool(p, u, G, n, cleared_mask, use_filtering=True):
 
 
 def greedy_myopic_simulate(p, u, B, G, z_mask, pool_selector=None):
-    """Simulate myopic greedy on a fixed infection profile z_mask.
+    """Simulate myopic greedy on a fixed latent-state profile z_mask.
 
     At each step: pick best myopic pool, observe augmented result,
     update beliefs via Bayesian update, repeat.
@@ -241,7 +241,7 @@ def _greedy_future(p, u, G, n, b, cleared_mask):
 
 
 def greedy_lookahead_simulate(p, u, B, G, z_mask):
-    """Simulate lookahead greedy on a fixed infection profile.
+    """Simulate lookahead greedy on a fixed latent-state profile.
 
     At step 1: uses full lookahead to pick the best pool.
     At steps 2+: falls back to myopic (otherwise it's the full DP solver).
@@ -280,7 +280,7 @@ def greedy_myopic_counting_simulate(p, u, B, G, z_mask, pool_selector=None):
     """Simulate myopic greedy with full-history Bayesian update by counting.
 
     Like greedy_myopic_simulate but at each step computes posteriors by
-    enumerating all 2^n infection profiles consistent with the FULL
+    enumerating all 2^n latent-state profiles consistent with the FULL
     history, rather than applying sequential single-test updates.
 
     This uses bayesian_update_by_counting(p, history, n) which considers
@@ -317,9 +317,9 @@ def greedy_myopic_counting_simulate(p, u, B, G, z_mask, pool_selector=None):
 def greedy_myopic_gibbs_simulate(p, u, B, G, z_mask,
                                  num_iterations=1000, burn_in=200, seed=None,
                                  pool_selector=None):
-    """Simulate myopic greedy with Gibbs sampling posterior updates.
+    """Simulate myopic greedy with Gibbs drawing posterior updates.
 
-    Like greedy_myopic_counting_simulate but uses Gibbs sampling (MCMC)
+    Like greedy_myopic_counting_simulate but uses Gibbs drawing (MCMC)
     to approximate posteriors instead of exact enumeration. Scales to
     larger populations (n~50+) where counting (O(2^n)) is infeasible.
 
@@ -330,7 +330,7 @@ def greedy_myopic_gibbs_simulate(p, u, B, G, z_mask,
     history = ()
 
     for _ in range(B):
-        # Compute posteriors from full history using Gibbs sampling
+        # Compute posteriors from full history using Gibbs drawing
         if history:
             current_p = gibbs_update(p, history, n,
                                      num_iterations=num_iterations,
@@ -356,9 +356,9 @@ def greedy_myopic_gibbs_simulate(p, u, B, G, z_mask,
 def greedy_myopic_gibbs_expected_utility(p, u, B, G,
                                           num_iterations=1000, burn_in=200,
                                           seed=42, pool_selector=None):
-    """Expected utility of myopic greedy with Gibbs sampling posteriors.
+    """Expected utility of myopic greedy with Gibbs drawing posteriors.
 
-    At each step picks the myopic-best pool using Gibbs-sampled posteriors,
+    At each step picks the myopic-best pool using Gibbs-drawn posteriors,
     then recurses over all possible outcomes weighted by their probabilities.
     Uses a fixed seed for reproducibility within the recursive tree.
     """

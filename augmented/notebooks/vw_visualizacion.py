@@ -4,14 +4,14 @@
 elipses, y DOS iteraciones del scoring VW-A con formacion de super-nodo.
 
 VW-A (all-clear) score de un pool t:  (prod_{i in t} (1 - q_i)) * (sum_{i in t} u_i)
-  = prob. de que el pool salga LIMPIO por la utilidad que se declara sana de golpe,
+  = prob. de que el pool salga LIMPIO por la utilidad que se declara limpia de golpe,
   usando el posterior actual q_i (no el prior, una vez hay historia).
 
 Tras testear, los agentes tocados forman un super-nodo S con posterior CONJUNTO.
 La instancia (posiciones + membresias) esta arriba y es editable.
 """
 import sys
-ROOT = "/Users/hectorbecerrilvillamil/Desktop/PooledTesting/pooled-testing-dynamic"
+ROOT = "/Users/hectorbecerrilvillamil/Desktop/GroupCounting/group-count-dynamic"
 sys.path.insert(0, ROOT)
 
 import itertools
@@ -33,7 +33,7 @@ N = len(POS)
 BUDGET = 2
 
 rng = np.random.default_rng(7)
-p = {i: round(float(rng.uniform(0.15, 0.55)), 2) for i in POS}   # prior P(infectado)
+p = {i: round(float(rng.uniform(0.15, 0.55)), 2) for i in POS}   # prior P(estado activo)
 u = {i: int(rng.integers(1, 4)) for i in POS}                    # utilidad {1,2,3}
 Z = {i: int(rng.random() < p[i]) for i in POS}                   # estado real (oculto)
 
@@ -132,15 +132,15 @@ def figure(fname, title, q, cleared, chosen, tested_before, supernode):
         draw_supernode(ax, supernode)
     draw_agents(ax, q, cleared)
     sm = plt.cm.ScalarMappable(cmap=plt.cm.RdYlGn_r, norm=plt.Normalize(0, 1))
-    fig.colorbar(sm, ax=ax, fraction=0.04, pad=0.02, label="posterior P(infectado)")
+    fig.colorbar(sm, ax=ax, fraction=0.04, pad=0.02, label="posterior P(estado activo)")
     ax.set_title(title)
     ax.set_xlim(0.3, 8.4); ax.set_ylim(0, 9.3); ax.set_aspect("equal"); ax.axis("off")
     fig.tight_layout(); fig.savefig(fname, dpi=130); plt.close(fig)
 
 
 def run():
-    print("Estado real Z (oculto):", {i: Z[i] for i in sorted(Z) if Z[i]} or "todos sanos",
-          "(infectados)")
+    print("Estado real Z (oculto):", {i: Z[i] for i in sorted(Z) if Z[i]} or "todos limpios",
+          "(activos)")
     history, tested, S = [], set(), set()
 
     for it in range(1, BUDGET + 1):
@@ -186,7 +186,7 @@ def run():
     print("Posterior conjunto sobre S (perfiles consistentes con los conteos):")
     for bits, prob in sorted(joint, key=lambda x: -x[1]):
         infset = [Ss[k] for k in range(len(Ss)) if bits[k]]
-        print(f"   infectados={infset or '{}'}:  P = {prob:.3f}")
+        print(f"   activos={infset or '{}'}:  P = {prob:.3f}")
     shared = [i for i in Ss if sum(i in v for v in POOLS.values()) > 1]
     print(f"Agentes de S compartidos entre pools: {shared} (donde VW debe usar la CONJUNTA, no el producto).")
     print("\nFiguras: vw_iter_setup.png, vw_iter1.png, vw_iter2.png")

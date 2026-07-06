@@ -79,10 +79,10 @@ from augmented.hybrid_solver import (
     hybrid_greedy_bruteforce,
     estimate_branch_value,
     expected_info_gain,
-    infection_aware_score,
-    _infection_aware_best_pool,
+    latent_state_aware_score,
+    _latent_state_aware_best_pool,
 )
-from augmented.infection_reward_greedy import (
+from augmented.state_reward_greedy import (
     greedy_myopic_beta_expected_utility, _beta_best_pool,
 )
 from augmented.semi_utility import greedy_myopic_semi_expected_utility
@@ -147,7 +147,7 @@ md("""\
 
 1. Pooling wins at low prevalence (n=2)
 2. Augmented count r yields better posteriors than binary (n=3)
-3. Pooling vs individual testing across G (n=4)
+3. Pooling vs individual counting across G (n=4)
 """)
 
 # --- 1.1 Simplest Case ---
@@ -221,7 +221,7 @@ display(render_side_by_side(
 md("""\
 ### 1.2 Augmented vs Classical — n=3, B=2, G=3
 
-Augmented returns exact count r = |pool ∩ Z|; classical returns only positive/negative.
+Augmented returns exact count r = |pool ∩ Z|; classical returns only nonzero_count/zero_count.
 """)
 
 code("""\
@@ -247,7 +247,7 @@ display(render_tree(tree_aug, n, title=f'Augmented Optimal (EU={val_aug:.3f})'))
 md("""\
 ### 1.3 Pooling vs Individual — n=4, B=2, G in {1..4}
 
-G=1 forces individual testing. Larger G unlocks pooling.
+G=1 forces individual counting. Larger G unlocks pooling.
 """)
 
 code("""\
@@ -325,7 +325,7 @@ print(f'\\nTotal instances: {len(df_bench)}')
 code("""\
 # --- Figure 1: Strategy Chain Bar Chart (aggregated) ---
 strategies = ['U_single', 'U_s_NO', 'U_s_O', 'U_D', 'U_D_A']
-labels = ['Individual\\nTesting', 'Static\\nNon-Overlap', 'Static\\nOverlap',
+labels = ['Individual\\nCounting', 'Static\\nNon-Overlap', 'Static\\nOverlap',
           'Classical\\nDynamic', 'Augmented\\nDynamic']
 colors = [C_GREEDY, C_STATIC, '#e67e22', C_CLS, C_OPT]
 
@@ -1184,7 +1184,7 @@ results_cls = {d: [] for d in deltas}
 def mc_eval_tree(tree, p_true, u, n, B, n_sim=200):
     realized = []
     for _ in range(n_sim):
-        infected = [np.random.random() < pi for pi in p_true]
+        active = [np.random.random() < pi for pi in p_true]
         node = tree
         cleared = 0
         for _ in range(B):
@@ -1192,14 +1192,14 @@ def mc_eval_tree(tree, p_true, u, n, B, n_sim=200):
                 break
             pool = node['pool']
             pool_idx = indices_from_mask(pool, n)
-            r = sum(1 for i in pool_idx if infected[i])
+            r = sum(1 for i in pool_idx if active[i])
             if r == 0:
                 cleared |= pool
             # Classical: collapse r>0 to r=1 for classical tree
             node = node['children'].get(r, node['children'].get(
                 min(node['children'].keys(), key=lambda k: abs(k-r)),
                 {'terminal': True}))
-        welfare = sum(u[i] for i in range(n) if (cleared >> i) & 1 and not infected[i])
+        welfare = sum(u[i] for i in range(n) if (cleared >> i) & 1 and not active[i])
         realized.append(welfare)
     return np.mean(realized)
 
@@ -1277,7 +1277,7 @@ for inst in range(N_INST):
 
         realized = []
         for _ in range(200):
-            infected = [np.random.random() < pi for pi in p_true]
+            active = [np.random.random() < pi for pi in p_true]
 
             node = tree_hat
             cleared = 0
@@ -1286,12 +1286,12 @@ for inst in range(N_INST):
                     break
                 pool = node['pool']
                 pool_idx = indices_from_mask(pool, n)
-                r = sum(1 for i in pool_idx if infected[i])
+                r = sum(1 for i in pool_idx if active[i])
                 if r == 0:
                     cleared |= pool
                 node = node['children'].get(r, node.get('children', {}).get(0, {'terminal': True}))
 
-            welfare = sum(u_inst[i] for i in range(n) if (cleared >> i) & 1 and not infected[i])
+            welfare = sum(u_inst[i] for i in range(n) if (cleared >> i) & 1 and not active[i])
             realized.append(welfare)
 
         results_noisy[sigma].append(np.mean(realized))
@@ -1338,7 +1338,7 @@ N_INST_RISK = 10
 def simulate_welfare(tree, p, u, n, n_sim):
     welfares = []
     for _ in range(n_sim):
-        infected = [np.random.random() < pi for pi in p]
+        active = [np.random.random() < pi for pi in p]
         node = tree
         cleared = 0
         for _ in range(B + 2):
@@ -1346,11 +1346,11 @@ def simulate_welfare(tree, p, u, n, n_sim):
                 break
             pool = node['pool']
             pool_idx = indices_from_mask(pool, n)
-            r = sum(1 for i in pool_idx if infected[i])
+            r = sum(1 for i in pool_idx if active[i])
             if r == 0:
                 cleared |= pool
             node = node['children'].get(r, node.get('children', {}).get(0, {'terminal': True}))
-        welfare = sum(u[i] for i in range(n) if (cleared >> i) & 1 and not infected[i])
+        welfare = sum(u[i] for i in range(n) if (cleared >> i) & 1 and not active[i])
         welfares.append(welfare)
     return np.array(welfares)
 
@@ -1360,22 +1360,22 @@ def simulate_welfare_single(p, u, B, n_sim):
     test_agents = [scores[j][1] for j in range(min(B, len(p)))]
     welfares = []
     for _ in range(n_sim):
-        infected = [np.random.random() < pi for pi in p]
-        w = sum(u[i] for i in test_agents if not infected[i])
+        active = [np.random.random() < pi for pi in p]
+        w = sum(u[i] for i in test_agents if not active[i])
         welfares.append(w)
     return np.array(welfares)
 
 def simulate_welfare_static(pools, p, u, n, n_sim):
     welfares = []
     for _ in range(n_sim):
-        infected = [np.random.random() < pi for pi in p]
+        active = [np.random.random() < pi for pi in p]
         cleared = 0
         for pool in pools:
             pool_idx = indices_from_mask(pool, n)
-            r = sum(1 for i in pool_idx if infected[i])
+            r = sum(1 for i in pool_idx if active[i])
             if r == 0:
                 cleared |= pool
-        welfare = sum(u[i] for i in range(n) if (cleared >> i) & 1 and not infected[i])
+        welfare = sum(u[i] for i in range(n) if (cleared >> i) & 1 and not active[i])
         welfares.append(welfare)
     return np.array(welfares)
 
@@ -1394,7 +1394,7 @@ for inst in range(N_INST_RISK):
     val_so, pools_so = solve_static_overlapping(p_inst, u_inst, B, G)
     w_static = simulate_welfare_static(pools_so, p_inst, u_inst, n, N_SIM)
 
-    # Individual testing
+    # Individual counting
     w_single = simulate_welfare_single(p_inst, u_inst, B, N_SIM)
 
     for name, w in [('Individual', w_single), ('Static Overlap', w_static),
@@ -1475,7 +1475,7 @@ plt.show()
 """)
 
 md("""\
-> **Takeaway**: Augmented dynamic earns the highest mean EU. However, individual testing may have lower P(welfare=0) in some instances. There is a trade-off between expected utility and tail risk.
+> **Takeaway**: Augmented dynamic earns the highest mean EU. However, individual counting may have lower P(welfare=0) in some instances. There is a trade-off between expected utility and tail risk.
 """)
 
 # ============================================================
@@ -1586,7 +1586,7 @@ md("""\
 <a id='appA'></a>
 
 ---
-# Appendix A: Gibbs Sampling Verification
+# Appendix A: Gibbs Drawing Verification
 """)
 
 code("""\
@@ -1703,11 +1703,11 @@ md("""\
 ---
 # Appendix C: Scoring Meta-parameters (alpha, beta)
 
-Effect of alpha (infection-aware blend) and beta (information reward) on greedy pool selection.
+Effect of alpha (state-aware blend) and beta (information reward) on greedy pool selection.
 """)
 
 code("""\
-# --- Alpha: Infection-aware scoring ---
+# --- Alpha: State-aware scoring ---
 n, B, G = 6, 4, 3
 p = [0.3] * n
 u = [1.0] * n
@@ -1718,7 +1718,7 @@ eu_alpha = []
 for alpha in alpha_values:
     def make_score_fn(a):
         def fn(cp, u_arg, G_arg, n_arg, cleared_mask):
-            return _infection_aware_best_pool(cp, u_arg, G_arg, n_arg, cleared_mask, alpha=a)
+            return _latent_state_aware_best_pool(cp, u_arg, G_arg, n_arg, cleared_mask, alpha=a)
         return fn
 
     _, eu_a = hybrid_greedy_bruteforce(p, u, B, G, greedy_steps=B,
@@ -1734,7 +1734,7 @@ ax.plot(alpha_values, eu_alpha, 'o-', color=C_INFO, linewidth=2, markersize=10)
 ax.axhline(y=val_opt, color=C_OPT, linestyle='--', linewidth=2, label=f'Optimal DP ({val_opt:.4f})')
 ax.set_xlabel('alpha (0=clearance only, 1=info only)')
 ax.set_ylabel('Expected Utility')
-ax.set_title('Effect of Infection-Aware Scoring on Greedy')
+ax.set_title('Effect of LatentState-Aware Scoring on Greedy')
 ax.legend()
 ax.grid(True, alpha=0.3)
 plt.tight_layout()

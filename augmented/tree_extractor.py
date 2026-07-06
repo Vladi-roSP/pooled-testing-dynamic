@@ -22,7 +22,7 @@ def extract_tree(policy, p, u, n):
     policy : DAPTS
         A solved DAPTS strategy.
     p : list[float]
-        Prior infection probabilities.
+        Prior latent-state probabilities.
     u : list[float]
         Individual utilities.
     n : int
@@ -41,6 +41,17 @@ def extract_tree(policy, p, u, n):
           - 'children': dict mapping outcome r -> child node
           - 'utility': expected utility at terminal nodes
     """
+    if getattr(policy, "cap", None) is not None:
+        # A truncated policy keys histories on binned counts min(r, cap) and
+        # its "r >= cap" branch aggregates several exact counts, so both the
+        # raw-count branching below and bayesian_update_single_test (which
+        # conditions on an exact count) would be wrong. Faithful rendering of
+        # truncated trees needs range-conditioned posteriors; not yet done.
+        raise NotImplementedError(
+            "extract_tree does not support truncated (cap<G) policies; "
+            f"got policy.cap={policy.cap}. Use cap=None (full counts)."
+        )
+
     def _build(k, history, cleared_mask, current_p):
         if k > policy.B:
             # Terminal node

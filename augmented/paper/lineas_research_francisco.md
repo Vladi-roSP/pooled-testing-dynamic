@@ -53,7 +53,7 @@ el costo de la miopía crecen ambos con $B$).
 Como el óptimo es incomputable a n grande, la única forma de certificar el greedy
 es acotarlo por arriba. La cota más simple es la de información perfecta
 (hindsight): si conocieras el perfil $Z$, limpiarías a las $B\cdot G$ personas
-sanas de mayor utilidad, y su valor esperado acota por arriba al óptimo dinámico.
+limpias de mayor utilidad, y su valor esperado acota por arriba al óptimo dinámico.
 
 | n | U_DA (óptimo) | U_PI (cota) | U_DA/U_PI | (U_PI − greedy)/U_PI |
 |---|---|---|---|---|
@@ -67,7 +67,7 @@ n=50, B=G=5 da U_PI=46.9 contra greedy=19.5, es decir certifica que el greedy es
 a lo más a 58% del óptimo, sin haber calculado el óptimo. El problema es que la
 cota se afloja con n (U_DA/U_PI baja de 0.96 a 0.84) y a escala el certificado es
 débil. La razón es estructural: cuando el presupuesto $B\cdot G$ se acerca al número
-de sanos, la información perfecta limpia a casi todos y la cota tiende a $U^{\max}$,
+de limpios, la información perfecta limpia a casi todos y la cota tiende a $U^{\max}$,
 ignorando lo difícil que es deducir sin conocer $Z$.
 
 El prototipo funciona y deja clara la pieza que falta: una cota por **relajación de
@@ -83,5 +83,5 @@ teórica concreta —¿cuánto hueco cierra un lookahead de profundidad $d$ como
 de $B$, y existe un $d(B)$ que garantice estar dentro de $\epsilon$ del óptimo? La
 descomposición (sección 1) es el soporte que dice dónde está el hueco. Y la cota
 (sección 3) es el problema abierto de certificación: el prototipo de hindsight está
-hecho y muestra por qué necesitamos la versión con penalización, que es lo que
+hecho y registro por qué necesitamos la versión con penalización, que es lo que
 convertiría todo esto en un resultado de certificación a escala.

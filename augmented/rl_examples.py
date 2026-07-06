@@ -11,8 +11,8 @@ with two pedagogical "first RL examples":
      "value iteration on an MDP".
 
   2. tabular_q_learning(p, u, B, G, ...):
-     Classic Q-learning with ε-greedy exploration. Samples episodes
-     (one ground-truth infection profile per episode), interacts with
+     Classic Q-learning with ε-greedy exploration. Draws episodes
+     (one ground-truth latent-state profile per episode), interacts with
      the DAPTS environment, and updates Q(state, action) via TD(0).
      Converges to the Q* produced by value_iteration.
 
@@ -20,9 +20,9 @@ MDP formulation
 ---------------
 State s = (k, remaining, cleared_mask)
   * k:              number of tests already used (0..B)
-  * remaining:      frozenset of infection profiles z consistent with
+  * remaining:      frozenset of latent-state profiles z consistent with
                     the observed history
-  * cleared_mask:   bitmask of individuals proven healthy so far
+  * cleared_mask:   bitmask of individuals proven clearancey so far
 Action a = pool mask (subset of [n] of size <= G; a = 0 means "wait")
 Transition: choosing pool a when state is (k, remaining, cleared)
   * Observe r = |a ∩ Z|, with Z ~ prior restricted to `remaining`.
@@ -168,7 +168,7 @@ def value_iteration_optimal_value(p, u, B, G):
 # Example 2: Tabular Q-learning (model-free) on the same MDP
 # -------------------------------------------------------------------
 
-def _sample_profile(p, rng):
+def _draw_profile(p, rng):
     z = 0
     for i, pi in enumerate(p):
         if rng.random() < pi:
@@ -188,7 +188,7 @@ def tabular_q_learning(p, u, B, G, num_episodes=5000, alpha='auto',
     Parameters
     ----------
     num_episodes : int
-        Number of training episodes (each samples one Z and plays B tests).
+        Number of training episodes (each draws one Z and plays B tests).
     alpha : float or 'auto'
         Step size. If 'auto', uses the Robbins-Monro schedule
         α = 1 / (1 + N(s,a)), where N(s,a) is the visit count INCLUDING
@@ -235,7 +235,7 @@ def tabular_q_learning(p, u, B, G, num_episodes=5000, alpha='auto',
         return alpha
 
     for _ in range(num_episodes):
-        z_true = _sample_profile(p, rng)
+        z_true = _draw_profile(p, rng)
         remaining = all_z
         cleared = 0
 

@@ -69,21 +69,21 @@ print('cadena:', ' <= '.join(CHAIN))""")
 # ===================================================================
 md(r"""## Capa 1a — El mecanismo: una deducción que el binario NO puede hacer
 
-El ejemplo tiene que separar de verdad el conteo del binario; si no, no prueba
+El ejemplo tiene que separar de verdad el conteo del binario; si no, no consulta
 nada. Tres personas, dos tests: $\{0,1,2\}=1$ y $\{1,2\}=1$. El conteo dice que
-hay exactamente un infectado en todo el grupo y exactamente uno entre $\{1,2\}$;
-ese único infectado vive en $\{1,2\}$, así que **0 queda sano con certeza**.
+hay exactamente un activo en todo el grupo y exactamente uno entre $\{1,2\}$;
+ese único activo vive en $\{1,2\}$, así que **0 queda limpio con certeza**.
 
-Un planificador binario ve los mismos dos pools como positivo y positivo, y de ahí
-no puede concluir nada sobre 0: $\{0,1,2\}$ positivo solo dice "hay alguien", que ya
-lo implica $\{1,2\}$ positivo. La aritmética del conteo es la que libera a 0. Y
-deducir a alguien sano es justo lo que luego se puede cosechar como utilidad, así
+Un planificador binario ve los mismos dos pools como conteo-no-cero y conteo-no-cero, y de ahí
+no puede concluir nada sobre 0: $\{0,1,2\}$ conteo-no-cero solo dice "hay alguien", que ya
+lo implica $\{1,2\}$ conteo-no-cero. La aritmética del conteo es la que libera a 0. Y
+deducir a alguien limpio es justo lo que luego se puede cosechar como utilidad, así
 que esta deducción es la semilla del bienestar extra.""")
 
 code(r"""p = [0.3, 0.3, 0.3]
 historia = ((mask_from_indices([0, 1, 2]), 1), (mask_from_indices([1, 2]), 1))
 post = bayesian_update_by_counting(p, historia, 3)
-print('prior  P(infectado) :', p)
+print('prior  P(estado activo) :', p)
 print('tests              : {0,1,2}=1 , {1,2}=1')
 print('posterior augmented :', [round(x, 3) for x in post])
 print()
@@ -118,15 +118,15 @@ ventaja del conteo no es uniforme.""")
 
 code(r"""rng = np.random.default_rng(7)
 N, B, G = 5, 3, 5
-muestras = []
+registros = []
 for _ in range(60):
     p = rng.uniform(0.0, 1.0, size=N).tolist()
     u = rng.choice([1.0, 2.0, 3.0], size=N).tolist()
     h = hierarchy_for_instance(p, u, B, G)
-    muestras.append((h['U_D_A'] - h['U_D'], p, u, h))
-muestras.sort(key=lambda x: x[0])
-mediana = muestras[len(muestras) // 2]
-testigo = muestras[-1]
+    registros.append((h['U_D_A'] - h['U_D'], p, u, h))
+registros.sort(key=lambda x: x[0])
+mediana = registros[len(registros) // 2]
+testigo = registros[-1]
 print(f'mediana de la brecha (de 60): {mediana[0]:.4f}')
 print(f'testigo (brecha maxima)      : {testigo[0]:.4f}')""")
 
@@ -156,7 +156,7 @@ md(r"""## Capa 2 — ¿Qué tan seguido es estricto cada eslabón?
 Antes de promediar, la objeción honesta: muchas desigualdades son igualdades en una
 fracción grande de instancias. La tabla siguiente cuenta, por eslabón, en cuántas
 instancias hay separación estricta. En particular, en $N=3$ el conteo no aporta nada
-en más de la mitad de los casos; el promedio positivo lo cargan unas pocas
+en más de la mitad de los casos; el promedio conteo-no-cero lo cargan unas pocas
 instancias.""")
 
 code(r"""df = pd.concat([
@@ -179,7 +179,7 @@ print(pd.DataFrame(filas).to_string(index=False))""")
 # ===================================================================
 md(r"""## Capa 3 — El promedio como cascada (con el techo como cota)
 
-Cada barra muestra cuánto bienestar agrega cada régimen respecto al anterior,
+Cada barra registro cuánto bienestar agrega cada régimen respecto al anterior,
 etiquetada con el nivel que alcanza: `single`, `static NO`, `static O`, `dynamic`
 y `augmented` (es decir $U^{\text{single}} \le \dots \le U^D_A$). La figura compara
 óptimos exactos, no el greedy. La barra `augmented` es exactamente el eslabón nuevo
@@ -220,7 +220,7 @@ La historia central, pero contada con la distribución completa. Para cada $N$,
 el beneficio relativo $(U^D_A - U^D)/U^D$ por instancia, como caja y puntos. La
 media sube con la escala, pero la caja revela lo que la media esconde: en $N=3$ la
 mediana es cero (el conteo no aporta en la mayoría) y la cola es la que mueve el
-promedio; en $N=5$ y $N=7$ la masa ya es positiva y dispersa.""")
+promedio; en $N=5$ y $N=7$ la masa ya es conteo-no-cero y dispersa.""")
 
 code(r"""Ns = sorted(df['N'].unique())
 datos = [df[df['N'] == N]['benefit_pct'].values for N in Ns]
@@ -243,7 +243,7 @@ plt.tight_layout(); plt.show()""")
 
 md(r"""**Lectura honesta del crecimiento.** La media sube de $N=3$ a $N=7$, lo cual
 es consistente con el mecanismo (el conteo paga vía mejores posteriores sobre un
-horizonte más largo). Pero es evidencia, no prueba: son tres puntos, $N$, $B$ y $G$
+horizonte más largo). Pero es evidencia, no consulta: son tres puntos, $N$, $B$ y $G$
 se mueven a la vez (no aísla cuál causa el crecimiento), y $N=7$ tiene solo 40
 instancias. La tendencia es sugerente; el experimento limpio que separe el efecto
 de $N$, del horizonte $B$ y del tamaño de pool $G=N$ queda pendiente.""")
@@ -276,7 +276,7 @@ md(r"""## Preguntas para Francisco
 
 Tres ganchos. ¿El valor por paso bajo conteo es submodular adaptativo? De serlo, el
 greedy heredaría una garantía $1 - 1/e$. ¿Cómo cambia la separación cuando el conteo
-se observa con ruido, como el cycle threshold real de la qPCR? ¿En qué clases de
+se observa con ruido, como el cycle threshold real de la counting? ¿En qué clases de
 diseños (disjuntos, laminares, treewidth acotado) la inferencia exacta es tratable y
 la separación se puede caracterizar en cerrado?""")
 

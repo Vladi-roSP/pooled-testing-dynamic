@@ -1,11 +1,11 @@
 """
-Hybrid greedy -> brute-force solver for augmented pooled testing.
+Hybrid greedy -> brute-force solver for augmented adaptive group counting.
 
 Combines greedy pool selection for the first K steps with exact DP
 (solve_optimal_dapts) for the remaining B-K steps.  Includes
 entropy-based scoring and branch value estimation.
 
-Part A: Entropy, information gain, infection-aware scoring
+Part A: Entropy, information gain, state-aware scoring
 Part B: Branch value estimation (lower/upper bounds)
 Part C: Core hybrid solver
 """
@@ -26,7 +26,7 @@ from augmented.baselines import u_max
 
 
 # ===================================================================
-# Part A: Entropy, information gain, infection-aware scoring
+# Part A: Entropy, information gain, state-aware scoring
 # ===================================================================
 
 def _safe_binary_entropy(x):
@@ -37,7 +37,7 @@ def _safe_binary_entropy(x):
 
 
 def expected_info_gain(pool_mask, p, n):
-    """Expected reduction in posterior entropy from testing pool.
+    """Expected reduction in posterior entropy from counting pool.
 
     H_before - E[H_after | outcomes].
 
@@ -67,7 +67,7 @@ def expected_info_gain(pool_mask, p, n):
     return h_before - e_h_after
 
 
-def infection_aware_score(pool_mask, p, u, n, cleared_mask, alpha=0.5):
+def latent_state_aware_score(pool_mask, p, u, n, cleared_mask, alpha=0.5):
     """Score = alpha * P(r=0)*sum(u_i uncleared) + (1-alpha) * expected_info_gain.
 
     Blends the standard myopic gain with information-theoretic value.
@@ -106,8 +106,8 @@ def estimate_branch_value(p_posterior, u, remaining_B, G, cleared_mask, n):
     cleared_indices = indices_from_mask(cleared_mask, n)
     cleared_utility = sum(u[i] for i in cleared_indices)
 
-    # Identify active agents (uncertain infection status)
-    active_mask, confirmed_infected_mask = compute_active_mask(
+    # Identify active agents (uncertain latent_state status)
+    active_mask, confirmed_active_mask = compute_active_mask(
         p_posterior, cleared_mask, n
     )
     active_indices = indices_from_mask(active_mask, n)
@@ -143,8 +143,8 @@ def estimate_branch_value(p_posterior, u, remaining_B, G, cleared_mask, n):
 # Part C: Hybrid solver helpers
 # ===================================================================
 
-def _infection_aware_best_pool(p, u, G, n, cleared_mask, alpha):
-    """Pick pool maximizing infection_aware_score."""
+def _latent_state_aware_best_pool(p, u, G, n, cleared_mask, alpha):
+    """Pick pool maximizing latent_state_aware_score."""
     active_mask, _ = compute_active_mask(p, cleared_mask, n)
     if active_mask == 0:
         return 0
@@ -154,7 +154,7 @@ def _infection_aware_best_pool(p, u, G, n, cleared_mask, alpha):
 
     best_pool, best_score = 0, -1.0
     for pool in pools:
-        s = infection_aware_score(pool, p, u, n, cleared_mask, alpha)
+        s = latent_state_aware_score(pool, p, u, n, cleared_mask, alpha)
         if s > best_score:
             best_score = s
             best_pool = pool
@@ -259,7 +259,7 @@ def hybrid_greedy_bruteforce(p, u, B, G, greedy_steps,
     Parameters
     ----------
     p : list[float]
-        Prior infection probabilities.
+        Prior latent-state probabilities.
     u : list[float]
         Individual utilities.
     B : int
@@ -502,7 +502,7 @@ def _dp_phase(p, u, G, n, current_p, cleared_mask, step,
     cleared_utility = sum(u[i] for i in cleared_indices)
 
     # Identify active agents
-    active_mask, confirmed_infected_mask = compute_active_mask(
+    active_mask, confirmed_active_mask = compute_active_mask(
         current_p, cleared_mask, n
     )
     active_indices = indices_from_mask(active_mask, n)

@@ -16,14 +16,14 @@ from augmented.tree_extractor import extract_tree
 from augmented.hybrid_solver import (
     _safe_binary_entropy,
     expected_info_gain,
-    infection_aware_score,
+    latent_state_aware_score,
     estimate_branch_value,
     hybrid_greedy_bruteforce,
 )
 
 
 # ===================================================================
-# Task 2: Entropy, info gain, infection-aware scoring
+# Task 2: Entropy, info gain, state-aware scoring
 # ===================================================================
 
 def test_safe_binary_entropy_zero():
@@ -44,7 +44,7 @@ def test_safe_binary_entropy_typical():
     assert abs(_safe_binary_entropy(x) - expected) < 1e-10
 
 
-def test_info_gain_nonnegative():
+def test_info_gain_nonzero_count():
     """Info gain should be >= 0 for typical inputs."""
     p = [0.3, 0.5, 0.2]
     n = 3
@@ -62,7 +62,7 @@ def test_info_gain_deterministic_zero():
     assert abs(ig) < 1e-10, f"Info gain = {ig}, expected 0"
 
 
-def test_infection_aware_score_alpha_one():
+def test_latent_state_aware_score_alpha_one():
     """alpha=1 gives standard myopic score P(r=0)*sum(u_i uncleared)."""
     p = [0.2, 0.3, 0.1]
     u = [5.0, 3.0, 4.0]
@@ -70,14 +70,14 @@ def test_infection_aware_score_alpha_one():
     pool = mask_from_indices([0, 1])
     cleared_mask = 0
 
-    score = infection_aware_score(pool, p, u, n, cleared_mask, alpha=1.0)
+    score = latent_state_aware_score(pool, p, u, n, cleared_mask, alpha=1.0)
     # P(r=0) = (1-0.2)*(1-0.3) = 0.8*0.7 = 0.56
     # sum(u_i uncleared in pool) = 5.0 + 3.0 = 8.0
     expected = 0.56 * 8.0
     assert abs(score - expected) < 1e-10, f"score={score}, expected={expected}"
 
 
-def test_infection_aware_score_alpha_zero():
+def test_latent_state_aware_score_alpha_zero():
     """alpha=0 equals expected_info_gain."""
     p = [0.2, 0.3, 0.1]
     u = [5.0, 3.0, 4.0]
@@ -85,7 +85,7 @@ def test_infection_aware_score_alpha_zero():
     pool = mask_from_indices([0, 1])
     cleared_mask = 0
 
-    score = infection_aware_score(pool, p, u, n, cleared_mask, alpha=0.0)
+    score = latent_state_aware_score(pool, p, u, n, cleared_mask, alpha=0.0)
     ig = expected_info_gain(pool, p, n)
     assert abs(score - ig) < 1e-10, f"score={score}, expected ig={ig}"
 
@@ -119,7 +119,7 @@ def test_estimate_branch_value_upper_is_umax():
 
 def test_estimate_branch_value_with_cleared():
     """Cleared people add utility to both bounds."""
-    p = [0.2, 0.0, 0.1]  # agent 1 has p=0 (healthy)
+    p = [0.2, 0.0, 0.1]  # agent 1 has p=0 (clearancey)
     u = [5.0, 3.0, 4.0]
     n = 3
     # Agent 1 is cleared

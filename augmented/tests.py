@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from augmented.core import (
     all_pools, all_pools_from_mask, compute_active_mask,
     indices_from_mask, mask_from_indices, mask_str,
-    popcount, test_result,
+    popcount, test_result as _count_result,
 )
 from augmented.strategy import DAPTS
 from augmented.simulator import apply_dapts
@@ -67,10 +67,10 @@ def test_mask_str():
 
 def test_test_result():
     pool = mask_from_indices([0, 1, 2])
-    assert test_result(pool, 0) == 0                          # nobody infected
-    assert test_result(pool, mask_from_indices([1])) == 1     # one infected
-    assert test_result(pool, pool) == 3                       # all infected
-    assert test_result(mask_from_indices([0, 2]),
+    assert _count_result(pool, 0) == 0                          # nobody active
+    assert _count_result(pool, mask_from_indices([1])) == 1     # one active
+    assert _count_result(pool, pool) == 3                       # all active
+    assert _count_result(mask_from_indices([0, 2]),
                        mask_from_indices([1, 2, 3])) == 1     # partial overlap
 
 
@@ -99,7 +99,7 @@ def test_apply_dapts_simple():
     hist, cleared, u_val = apply_dapts(F, 0, n, u_vec)
     assert cleared == pool_all and u_val == 6.0
 
-    # Z = {1}: pool positive, nobody cleared
+    # Z = {1}: pool nonzero_count, nobody cleared
     hist, cleared, u_val = apply_dapts(F, mask_from_indices([1]), n, u_vec)
     assert cleared == 0 and u_val == 0.0
 
@@ -117,7 +117,7 @@ def test_exact_vs_mc():
     mc = mc_expected_utility(F, p, u_vec, n, trials=200_000, seed=123)
     assert abs(exact - mc) < 0.05
 
-    # One pool of everyone: utility earned only if ALL healthy
+    # One pool of everyone: utility earned only if ALL clearancey
     expected = sum(u_vec) * 0.9 * 0.8 * 0.85
     assert abs(exact - expected) < 1e-10
 
@@ -226,17 +226,17 @@ def test_poisson_binomial_pmf():
 # ===================================================================
 
 def test_bayesian_r0_clears_pool():
-    # r=0 means nobody in pool is infected => posterior p_i = 0 for i in pool
+    # r=0 means nobody in pool is active => posterior p_i = 0 for i in pool
     p = [0.3, 0.5, 0.2]
     pool = mask_from_indices([0, 1])
     post = bayesian_update_single_test(p, pool, r=0, n=3)
-    assert abs(post[0]) < 1e-10  # individual 0 proven healthy
-    assert abs(post[1]) < 1e-10  # individual 1 proven healthy
+    assert abs(post[0]) < 1e-10  # individual 0 proven clearancey
+    assert abs(post[1]) < 1e-10  # individual 1 proven clearancey
     assert abs(post[2] - 0.2) < 1e-10  # individual 2 untested, unchanged
 
 
 def test_bayesian_r_equals_pool_size():
-    # r = |pool| means everyone in pool is infected => posterior p_i = 1
+    # r = |pool| means everyone in pool is active => posterior p_i = 1
     p = [0.3, 0.5, 0.2]
     pool = mask_from_indices([0, 1])
     post = bayesian_update_single_test(p, pool, r=2, n=3)
@@ -246,7 +246,7 @@ def test_bayesian_r_equals_pool_size():
 
 
 def test_bayesian_single_individual():
-    # Pool of size 1: r=0 => healthy, r=1 => infected
+    # Pool of size 1: r=0 => clearancey, r=1 => active
     p = [0.4, 0.6]
     post0 = bayesian_update_single_test(p, mask_from_indices([0]), r=0, n=2)
     assert abs(post0[0]) < 1e-10
@@ -256,8 +256,8 @@ def test_bayesian_single_individual():
 
 
 def test_bayesian_partial_result():
-    # Pool {0,1}, r=1: exactly one is infected. Who is more likely?
-    # p = [0.1, 0.9] — individual 1 is much more likely to be infected.
+    # Pool {0,1}, r=1: exactly one is active. Who is more likely?
+    # p = [0.1, 0.9] — individual 1 is much more likely to be active.
     p = [0.1, 0.9]
     pool = mask_from_indices([0, 1])
     post = bayesian_update_single_test(p, pool, r=1, n=2)
@@ -288,16 +288,16 @@ def test_bayesian_full_history():
     # Two sequential tests
     p = [0.3, 0.3, 0.3]
     n = 3
-    # Test 1: pool {0,1}, r=0 => both healthy
-    # Test 2: pool {2}, r=1 => individual 2 infected
+    # Test 1: pool {0,1}, r=0 => both clearancey
+    # Test 2: pool {2}, r=1 => individual 2 active
     history = (
         (mask_from_indices([0, 1]), 0),
         (mask_from_indices([2]), 1),
     )
     post = bayesian_update(p, history, n)
-    assert abs(post[0]) < 1e-10      # proven healthy
-    assert abs(post[1]) < 1e-10      # proven healthy
-    assert abs(post[2] - 1.0) < 1e-10  # proven infected
+    assert abs(post[0]) < 1e-10      # proven clearancey
+    assert abs(post[1]) < 1e-10      # proven clearancey
+    assert abs(post[2] - 1.0) < 1e-10  # proven active
 
 
 def test_bayesian_empty_history():
@@ -330,8 +330,8 @@ def test_greedy_myopic_B1():
     assert abs(u_greedy - u_opt) < 1e-10
 
 
-def test_greedy_simulate_all_healthy():
-    # Nobody infected: greedy should clear everyone it tests
+def test_greedy_simulate_all_clearancey():
+    # Nobody active: greedy should clear everyone it tests
     p = [0.1, 0.2, 0.15]
     u_vec = [5.0, 3.0, 4.0]
     _, cleared, utility = greedy_myopic_simulate(p, u_vec, B=2, G=3, z_mask=0)
@@ -344,7 +344,7 @@ def test_greedy_lookahead_simulate():
     u_vec = [5.0, 3.0, 4.0]
     _, _, util_la = greedy_lookahead_simulate(p, u_vec, B=2, G=2, z_mask=0)
     _, _, util_my = greedy_myopic_simulate(p, u_vec, B=2, G=2, z_mask=0)
-    # Both should clear people when nobody is infected
+    # Both should clear people when nobody is active
     assert util_la > 0
     assert util_my > 0
 
@@ -398,10 +398,10 @@ def test_overlapping_beats_non_overlapping():
 # ===================================================================
 
 def test_compute_active_mask_basic():
-    # p = [0.0, 0.5, 1.0, 0.3]: individual 0 is healthy, 2 is infected
+    # p = [0.0, 0.5, 1.0, 0.3]: individual 0 is clearancey, 2 is active
     active, confirmed = compute_active_mask([0.0, 0.5, 1.0, 0.3], 0, 4)
     assert active == mask_from_indices([1, 3])  # only uncertain
-    assert confirmed == mask_from_indices([2])  # confirmed infected
+    assert confirmed == mask_from_indices([2])  # confirmed active
 
 
 def test_compute_active_mask_with_cleared():
@@ -439,10 +439,10 @@ def test_all_pools_from_mask_empty():
 def test_counting_captures_cross_test_info():
     """Counting-based update captures cross-test information that sequential misses.
 
-    Test 1: pool {0,1}, r=1 → exactly one of {0,1} is infected.
-    Test 2: pool {1,2}, r=0 → 1 and 2 are healthy.
-    Combined: since 1 is healthy (test 2) and exactly one of {0,1} infected (test 1),
-    individual 0 must be infected.
+    Test 1: pool {0,1}, r=1 → exactly one of {0,1} is active.
+    Test 2: pool {1,2}, r=0 → 1 and 2 are clearancey.
+    Combined: since 1 is clearancey (test 2) and exactly one of {0,1} active (test 1),
+    individual 0 must be active.
 
     The counting approach correctly deduces P(Z_0=1) = 1.0.
     The sequential approach only updates individuals IN the pool at each step,
@@ -455,7 +455,7 @@ def test_counting_captures_cross_test_info():
         (mask_from_indices([1, 2]), 0),
     )
     counting = bayesian_update_by_counting(p, history, n)
-    # Counting correctly deduces: 0 infected, 1 healthy, 2 healthy
+    # Counting correctly deduces: 0 active, 1 clearancey, 2 clearancey
     assert abs(counting[0] - 1.0) < 1e-10, f"Expected P(Z_0=1)=1, got {counting[0]}"
     assert abs(counting[1] - 0.0) < 1e-10, f"Expected P(Z_1=1)=0, got {counting[1]}"
     assert abs(counting[2] - 0.0) < 1e-10, f"Expected P(Z_2=1)=0, got {counting[2]}"
@@ -494,12 +494,12 @@ def test_counting_empty_history():
 def test_counting_full_history_cross_test():
     """Counting correctly propagates information across overlapping pools.
 
-    Test 1: pool {0,1,2}, r=1 → exactly 1 infected in {0,1,2}
-    Test 2: pool {2,3}, r=0   → 2 and 3 are healthy
-    Test 3: pool {0}, r=1     → 0 is infected
+    Test 1: pool {0,1,2}, r=1 → exactly 1 active in {0,1,2}
+    Test 2: pool {2,3}, r=0   → 2 and 3 are clearancey
+    Test 3: pool {0}, r=1     → 0 is active
 
-    Combined: 0 infected, 2 healthy, 3 healthy. Since exactly 1 in {0,1,2}
-    is infected (test 1) and that's individual 0, individual 1 must be healthy.
+    Combined: 0 active, 2 clearancey, 3 clearancey. Since exactly 1 in {0,1,2}
+    is active (test 1) and that's individual 0, individual 1 must be clearancey.
 
     Counting gets this right. Sequential misses the cross-test deduction for 1.
     """
@@ -511,12 +511,12 @@ def test_counting_full_history_cross_test():
         (mask_from_indices([0]), 1),
     )
     counting = bayesian_update_by_counting(p, history, n)
-    assert abs(counting[0] - 1.0) < 1e-10  # confirmed infected
-    assert abs(counting[1] - 0.0) < 1e-10  # deduced healthy via cross-test
-    assert abs(counting[2] - 0.0) < 1e-10  # proven healthy
-    assert abs(counting[3] - 0.0) < 1e-10  # proven healthy
+    assert abs(counting[0] - 1.0) < 1e-10  # confirmed active
+    assert abs(counting[1] - 0.0) < 1e-10  # deduced clearancey via cross-test
+    assert abs(counting[2] - 0.0) < 1e-10  # proven clearancey
+    assert abs(counting[3] - 0.0) < 1e-10  # proven clearancey
 
-    # Sequential does NOT deduce individual 1 is healthy
+    # Sequential does NOT deduce individual 1 is clearancey
     seq = bayesian_update(p, history, n)
     assert abs(seq[0] - 1.0) < 1e-10  # test 3 confirms
     assert seq[1] > 0.1  # sequential doesn't fully update 1
@@ -609,16 +609,16 @@ def test_counting_greedy_simulate():
     u_vec = [5.0, 3.0, 4.0]
     hist, cleared, util = greedy_myopic_counting_simulate(
         p, u_vec, B=2, G=2, z_mask=0)
-    assert util > 0  # all healthy, should clear some
+    assert util > 0  # all clearancey, should clear some
 
 
 def test_counting_greedy_matches_sequential_z0():
-    """For z=0 (nobody infected), both greedy variants should agree."""
+    """For z=0 (nobody active), both greedy variants should agree."""
     p = [0.1, 0.2, 0.15]
     u_vec = [5.0, 3.0, 4.0]
     _, _, util_seq = greedy_myopic_simulate(p, u_vec, B=2, G=2, z_mask=0)
     _, _, util_cnt = greedy_myopic_counting_simulate(p, u_vec, B=2, G=2, z_mask=0)
-    # Both should find the same utility when nobody is infected
+    # Both should find the same utility when nobody is active
     assert abs(util_seq - util_cnt) < 1e-10
 
 
@@ -659,16 +659,16 @@ def test_estimate_p_no_history():
 def test_estimate_p_with_history():
     """With history, estimate should reflect the observations."""
     history = (
-        (mask_from_indices([0, 1]), 0),  # both healthy
+        (mask_from_indices([0, 1]), 0),  # both clearancey
     )
     est = estimate_p_from_history(history, 3, prior_p=[0.3, 0.3, 0.3])
-    assert est[0] < 0.05  # should be near 0 (proven healthy)
+    assert est[0] < 0.05  # should be near 0 (proven clearancey)
     assert est[1] < 0.05
     assert abs(est[2] - 0.3) < 1e-10  # unchanged
 
 
 # ===================================================================
-# 23) Gibbs sampling posterior update
+# 23) Gibbs drawing posterior update
 # ===================================================================
 
 def test_gibbs_no_history():
@@ -679,8 +679,8 @@ def test_gibbs_no_history():
         assert abs(result[i] - p[i]) < 1e-10
 
 
-def test_gibbs_all_healthy():
-    """r=0 pool confirms all members healthy."""
+def test_gibbs_all_clearancey():
+    """r=0 pool confirms all members clearancey."""
     p = [0.3, 0.4, 0.2]
     history = ((mask_from_indices([0, 1, 2]), 0),)  # all 3, r=0
     result = gibbs_update(p, history, 3, seed=42)
@@ -688,8 +688,8 @@ def test_gibbs_all_healthy():
         assert abs(result[i]) < 1e-10, f"p[{i}] = {result[i]}, expected 0"
 
 
-def test_gibbs_all_infected():
-    """r=|pool| confirms all members infected."""
+def test_gibbs_all_active():
+    """r=|pool| confirms all members active."""
     p = [0.3, 0.4, 0.2]
     history = ((mask_from_indices([0, 1, 2]), 3),)  # all 3, r=3
     result = gibbs_update(p, history, 3, seed=42)
@@ -699,9 +699,9 @@ def test_gibbs_all_infected():
 
 def test_gibbs_deterministic_deduction():
     """Gibbs should deterministically deduce from overlapping tests."""
-    # Test 1: pool {0,1}, r=1 → exactly one infected
-    # Test 2: pool {1,2}, r=0 → both healthy → agent 1 healthy
-    # Therefore agent 0 must be infected
+    # Test 1: pool {0,1}, r=1 → exactly one active
+    # Test 2: pool {1,2}, r=0 → both clearancey → agent 1 clearancey
+    # Therefore agent 0 must be active
     p = [0.3, 0.4, 0.2]
     history = (
         (mask_from_indices([0, 1]), 1),
@@ -717,7 +717,7 @@ def test_gibbs_approx_matches_counting():
     """For small n, Gibbs should approximately match exact counting."""
     p = [0.2, 0.3, 0.15, 0.25]
     history = (
-        (mask_from_indices([0, 1, 2]), 1),  # exactly 1 of {0,1,2} infected
+        (mask_from_indices([0, 1, 2]), 1),  # exactly 1 of {0,1,2} active
     )
     n = 4
     exact = bayesian_update_by_counting(p, history, n)
@@ -763,10 +763,10 @@ def test_gibbs_greedy_simulate():
     """Greedy Gibbs simulate should produce valid results."""
     p = [0.1, 0.2, 0.15]
     u = [5.0, 3.0, 4.0]
-    z_mask = 0  # nobody infected
+    z_mask = 0  # nobody active
     history, cleared, utility = greedy_myopic_gibbs_simulate(
         p, u, B=2, G=2, z_mask=z_mask, seed=42)
-    # With nobody infected, all pools clear → should clear everyone
+    # With nobody active, all pools clear → should clear everyone
     assert utility > 0
 
 
@@ -781,8 +781,8 @@ def test_gibbs_greedy_expected_utility():
         f"Gibbs EU={eu_gibbs:.4f} vs Counting EU={eu_counting:.4f}"
 
 
-def _sample_z_mask_from_prior(p):
-    """Sample an infection profile using the full prior over all 2^n worlds."""
+def _draw_z_mask_from_prior(p):
+    """Draw an latent-state profile using the full prior over all 2^n worlds."""
     n = len(p)
     weights = []
     for z_mask in range(1 << n):
@@ -820,7 +820,7 @@ def test_gibbs_systematic_exact_comparison():
             p = np.random.uniform(0.05, 0.4, size=n).tolist()
             u = np.random.uniform(1, 10, size=n).tolist()
 
-            z_mask = _sample_z_mask_from_prior(p)
+            z_mask = _draw_z_mask_from_prior(p)
             history, _, _ = greedy_myopic_simulate(p, u, B, G, z_mask)
             history = history[:min(B, 2)]
 
@@ -954,14 +954,14 @@ def test_singleton_gap_is_zero():
 
 
 def test_deterministic_subset_shows_gap():
-    # User's example: t' ⊂ t with t' "positive" (r' >= 1). Then for any
+    # User's example: t' ⊂ t with t' "nonzero_count" (r' >= 1). Then for any
     # superset t, P(r_t = 0 | H) = 0 exactly. With a symmetric prior and
     # r' = 1 on a 2-pool, the marginals remain nondegenerate (0.5, 0.5),
-    # so the heuristic puts positive mass on r_t = 0 and we see a gap.
+    # so the heuristic puts nonzero_count mass on r_t = 0 and we see a gap.
     n = 4
     p = [0.5, 0.5, 0.5, 0.5]
     tprime = mask_from_indices([0, 1])
-    history = ((tprime, 1),)  # exactly one of {0,1} is infected
+    history = ((tprime, 1),)  # exactly one of {0,1} is active
     t = mask_from_indices([0, 1, 2, 3])
 
     summary = gap_summary(p, history, t, n)
@@ -970,7 +970,7 @@ def test_deterministic_subset_shows_gap():
     assert summary['tv'] > 0.01, summary['tv']
 
 
-def test_all_healthy_subset_heuristic_is_exact():
+def test_all_clearancey_subset_heuristic_is_exact():
     # If t' ⊂ t returned r'=0, the marginals tilde_p_i for i in t' are
     # forced to 0. The Poisson-Binomial on (0, 0, tilde_p_j, tilde_p_k, ...)
     # then correctly recovers the exact joint PMF of r_t, because the

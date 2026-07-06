@@ -10,7 +10,7 @@ solve for V to pick the next pool.
 
 Two natural readings of prob(w_T):
     (A) all-clear:    prob_A(w_T) = ∏_{i∈T}(1 − p_i)
-    (B) any-positive: prob_B(w_T) = 1 − ∏_{i∈T}(1 − p_i)   (Codex assumption)
+    (B) any-nonzero_count: prob_B(w_T) = 1 − ∏_{i∈T}(1 − p_i)   (Codex assumption)
 
 Empirical claims demonstrated here:
   1. With prob_A and util_T = Σ u_i, scalar VW EXACTLY reproduces the

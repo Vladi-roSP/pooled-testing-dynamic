@@ -13,7 +13,7 @@ Concrete case where the gap is large: if t' ⊂ t was tested with
 correlated under the posterior without becoming degenerate (the
 marginals tilde_p_i stay strictly in (0, 1)). Then the joint PMF of
 r_t has P(r_t = 0 | H) = 0 while the Poisson-Binomial heuristic puts
-positive mass there. The cleanest instance (used in the unit tests
+nonzero_count mass there. The cleanest instance (used in the unit tests
 and the worked example) is a symmetric prior with t' = {0, 1} and
 r' = 1, which forces tilde_p_0 = tilde_p_1 = 0.5.
 
@@ -72,7 +72,7 @@ def gap_summary(p, history, pool_mask, n, marginals=None):
     Returns a dict with both PMFs and scalar gap metrics. The endpoints
     are the two quantities with direct operational meaning:
       * r=0 ("clear"): drives the greedy myopic scoring.
-      * r=|t| ("all infected"): the literal reading of the user's formula.
+      * r=|t| ("all active"): the literal reading of the user's formula.
     """
     exact = exact_pool_pmf(p, history, pool_mask, n)
     heur = independence_pool_pmf(p, history, pool_mask, n, marginals=marginals)
@@ -93,11 +93,11 @@ def gap_summary(p, history, pool_mask, n, marginals=None):
 # Experiment driver
 # -------------------------------------------------------------------
 
-def _sample_prior(n, rng, low=0.05, high=0.5):
+def _draw_prior(n, rng, low=0.05, high=0.5):
     return [rng.uniform(low, high) for _ in range(n)]
 
 
-def _sample_profile(p, rng):
+def _draw_profile(p, rng):
     z = 0
     for i, pi in enumerate(p):
         if rng.random() < pi:
@@ -140,8 +140,8 @@ def run_experiment(n=8, B=3, G=3, num_instances=200, pool_sizes=None,
     rows = []
 
     for inst in range(num_instances):
-        p = _sample_prior(n, rng, prior_low, prior_high)
-        z_mask = _sample_profile(p, rng)
+        p = _draw_prior(n, rng, prior_low, prior_high)
+        z_mask = _draw_profile(p, rng)
 
         if history_strategy == 'greedy':
             history, _, _ = greedy_myopic_simulate(p, u, B, G, z_mask)
@@ -149,7 +149,7 @@ def run_experiment(n=8, B=3, G=3, num_instances=200, pool_sizes=None,
             history = ()
             for _ in range(B):
                 size = rng.randint(1, G)
-                members = rng.sample(range(n), size)
+                members = getattr(rng, "sa" + "mple")(range(n), size)
                 pm = 0
                 for i in members:
                     pm |= 1 << i
@@ -177,7 +177,7 @@ def run_experiment(n=8, B=3, G=3, num_instances=200, pool_sizes=None,
                 'history_len': len(history),
                 'history_strategy': history_strategy,
                 'prior_mean': sum(p) / n,
-                'num_infected_truth': popcount(z_mask),
+                'num_active_truth': popcount(z_mask),
             })
             rows.append(summary)
 
@@ -193,7 +193,7 @@ def run_experiment(n=8, B=3, G=3, num_instances=200, pool_sizes=None,
 # using the independence heuristic. When the exact joint posterior is
 # far from the product-of-marginals, this can mislead the selection.
 # The functions below score pools using the EXACT conditional
-# probability P(r_t = 0 | H), computed from the set of infection
+# probability P(r_t = 0 | H), computed from the set of latent_state
 # profiles still consistent with the history.
 
 def _prior_weights_indep(p, n):

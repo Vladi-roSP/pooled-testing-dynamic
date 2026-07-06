@@ -1,8 +1,8 @@
-# Augmented pooled testing
+# Augmented adaptive group counting
 
-`augmented/` contains the Dynamic Augmented Pooled Testing Strategies (DAPTS)
-code. In the augmented model, a pooled test returns the exact count
-`r = |t cap Z|` of infected individuals in the tested pool.
+`augmented/` contains the Dynamic Augmented Adaptive Group Counting Strategies (DAPTS)
+code. In the augmented model, a grouped test returns the exact count
+`r = |t cap Z|` of active individuals in the tested pool.
 
 ## How to read this folder
 
@@ -17,7 +17,7 @@ code. In the augmented model, a pooled test returns the exact count
 | Core primitives | `core.py`, `strategy.py`, `simulator.py` | Bitmasks, pool/test primitives, strategy representation and simulation. |
 | Bayesian updates | `bayesian.py`, `gibbs_analysis.py` | Exact, counting and Gibbs-style posterior updates. |
 | Solvers | `solver.py`, `static_solver.py`, `classical_solver.py`, `pool_solvers.py`, `hybrid_solver.py` | Optimal dynamic, static, classical and hybrid solver variants. |
-| Greedy methods | `greedy.py`, `infection_reward_greedy.py`, `semi_utility.py`, `expected_utility.py` | Myopic policies and scoring variants. |
+| Greedy methods | `greedy.py`, `state_reward_greedy.py`, `semi_utility.py`, `expected_utility.py` | Myopic policies and scoring variants. |
 | Experiments | `experiments.py`, `csv_experiments.py`, `sprint3_experiments.py`, `overnight_experiments.py`, `comparison.py`, `cross_verification.py` | Reproducible experiment runners and comparisons. |
 | VW / super-nodes | `vw_demo.py`, `vw_restrict.py`, `vw_restrict_sweep.py` | Experiments around the VW super-node reformulation. |
 | RL | `rl_env.py`, `rl_train.py`, `rl_examples.py`, `rl_examples_demo.py`, `rl_models/` | Reinforcement-learning environment, training and saved exploratory models. |

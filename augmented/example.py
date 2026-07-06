@@ -24,7 +24,7 @@ def main():
     G = 3
 
     print("=" * 60)
-    print("Dynamic Augmented Pooled Testing — Comparison")
+    print("Dynamic Augmented Adaptive Group Counting — Comparison")
     print("=" * 60)
     print(f"\nPopulation (n={n}):")
     for i in range(n):
@@ -46,7 +46,7 @@ def main():
           f" of the gap between single and optimal")
 
     # --- Simulate on specific profiles ---
-    print(f"\n--- Simulation: Z = {{3}} (only individual 3 infected) ---")
+    print(f"\n--- Simulation: Z = {{3}} (only individual 3 active) ---")
     z = mask_from_indices([3])
 
     # Optimal

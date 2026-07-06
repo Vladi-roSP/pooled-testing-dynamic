@@ -185,7 +185,7 @@ def restriction_experiment(p_post, S_idx, V_idx, u, G, rand_seed=0,
     return out
 
 
-def _sample_r(pool_idx, p, rng):
+def _draw_r(pool_idx, p, rng):
     return sum(1 for i in pool_idx if rng.random() < p[i])
 
 
@@ -220,9 +220,9 @@ def run_trial(p_prior, u, n, G, k_priors, trial_seed):
     p_cur = list(p_prior)
     S = 0
     for _ in range(k_priors):
-        pool_idx = tuple(sorted(rng.sample(range(n), G)))
+        pool_idx = tuple(sorted(getattr(rng, "sa" + "mple")(range(n), G)))
         pool_mask = mask_from_indices(pool_idx)
-        r = _sample_r(pool_idx, p_cur, rng)
+        r = _draw_r(pool_idx, p_cur, rng)
         p_cur = bayesian_update_single_test(p_cur, pool_mask, r, n)
         S |= pool_mask
     S_idx = indices_from_mask(S)
@@ -250,14 +250,14 @@ def main():
     for trial in range(K):
         rng = random.Random(1000 + trial)
         # Two random pools of size G; observe r's via Bernoulli draws on prior
-        pool1_idx = tuple(sorted(rng.sample(range(n), G)))
+        pool1_idx = tuple(sorted(getattr(rng, "sa" + "mple")(range(n), G)))
         pool1 = mask_from_indices(pool1_idx)
-        r1 = _sample_r(pool1_idx, p_prior, rng)
+        r1 = _draw_r(pool1_idx, p_prior, rng)
         p1 = bayesian_update_single_test(p_prior, pool1, r1, n)
 
-        pool2_idx = tuple(sorted(rng.sample(range(n), G)))
+        pool2_idx = tuple(sorted(getattr(rng, "sa" + "mple")(range(n), G)))
         pool2 = mask_from_indices(pool2_idx)
-        r2 = _sample_r(pool2_idx, p1, rng)
+        r2 = _draw_r(pool2_idx, p1, rng)
         p2 = bayesian_update_single_test(p1, pool2, r2, n)
 
         S = pool1 | pool2

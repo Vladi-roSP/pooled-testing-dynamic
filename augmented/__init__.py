@@ -1,8 +1,8 @@
 """
-Dynamic Augmented Pooled Testing Strategies (DAPTS).
+Dynamic Augmented Adaptive Group Counting Strategies (DAPTS).
 
-An augmented pooled test returns the exact COUNT of infected individuals
-in the pool, rather than just a binary positive/negative result.
+An augmented grouped test returns the exact COUNT of active individuals
+in the pool, rather than just a binary nonzero_count/zero_count result.
 """
 
 from augmented.core import (

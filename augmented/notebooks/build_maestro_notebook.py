@@ -20,7 +20,7 @@ def _u(s):
     return html.unescape(s or "")
 
 
-PORTADA = r"""# Cartas de discusion — Dynamic Augmented Pooled Testing
+PORTADA = r"""# Cartas de discusion — Dynamic Augmented Adaptive Group Counting
 
 Cada carta es un ejemplo chico con su figura y un par de preguntas abiertas,
 pensado para discutir y abrir direcciones. Poco texto: la figura manda.
@@ -32,7 +32,7 @@ _d = os.path.abspath(os.getcwd())
 while _d != os.path.dirname(_d) and not os.path.isfile(os.path.join(_d, "augmented", "__init__.py")):
     _d = os.path.dirname(_d)
 if not os.path.isfile(os.path.join(_d, "augmented", "__init__.py")):
-    _fb = "/Users/hectorbecerrilvillamil/Desktop/PooledTesting/pooled-testing-dynamic"
+    _fb = "/Users/hectorbecerrilvillamil/Desktop/GroupCounting/group-count-dynamic"
     if os.path.isfile(os.path.join(_fb, "augmented", "__init__.py")):
         _d = _fb
 if _d not in sys.path:

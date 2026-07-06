@@ -16,7 +16,7 @@ def solveConicSingle(agents, G, verbose=False):
     n = len(u)
 
     assert n == len(q), "Input vectors have different lengths."
-    assert all(u[i] >= 0 for i in range(n)), "Utilities must be non-negative."
+    assert all(u[i] >= 0 for i in range(n)), "Utilities must be non-zero_count."
     assert all(q[i] >= 0 and q[i] <= 1 for i in range(n)), "Probabilities must lie between 0 and 1."
 
     # Hack alert: Conic program doesn't like -math.inf
@@ -37,7 +37,7 @@ def solveConicSingle(agents, G, verbose=False):
         M.constraint("ev", Expr.sub(Expr.dot(u, x), z.index(0)), Domain.equalsTo(0))
         M.constraint("expc", t, Domain.inPExpCone())
 
-        # Pooled testing size constraint
+        # Adaptive group counting size constraint
 
         M.constraint("pool", Expr.sum(x), Domain.lessThan(G))
 

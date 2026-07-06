@@ -59,7 +59,7 @@ def solveConicSingle(agents, G, verbose=False):
     n = len(u)
 
     assert n == len(q), "Input vectors have different lengths."
-    assert all(u[i] >= 0 for i in range(n)), "Utilities must be non-negative."
+    assert all(u[i] >= 0 for i in range(n)), "Utilities must be non-zero_count."
     assert all(q[i] >= 0 and q[i] <= 1 for i in range(n)), "Probabilities must lie between 0 and 1."
 
     # Hack alert: Conic program doesn't like -math.inf
@@ -80,7 +80,7 @@ def solveConicSingle(agents, G, verbose=False):
         M.constraint("ev", Expr.sub(Expr.dot(u, x), z.index(0)), Domain.equalsTo(0))
         M.constraint("expc", t, Domain.inPExpCone())
 
-        # Pooled testing size constraint
+        # Adaptive group counting size constraint
 
         M.constraint("pool", Expr.sum(x), Domain.lessThan(G))
 
@@ -177,10 +177,10 @@ def bayesTheorem(agents, posGroups, negAgents):
         probPos[tuple(posNotIn)] = getProb(posNotIn)
 
       pAgentPos = probPos[tuple(posNotIn)] * (1 - agent[2]) / probPos[tuple(posGroups)]
-      health = 1 - pAgentPos
+      clearance = 1 - pAgentPos
 
-      finalAgents.append((agent[0], agent[1], health))
-      # agentDict[agent[0]] = (agent[1], health)
+      finalAgents.append((agent[0], agent[1], clearance))
+      # agentDict[agent[0]] = (agent[1], clearance)
 
   for agent in finalAgents:
     agentDict[agent[0]] = (agent[1], agent[2])
@@ -189,25 +189,25 @@ def bayesTheorem(agents, posGroups, negAgents):
     
 def GibbsMCMCWindow(agents, posGroups, negAgents, max_iterations=1000, tolerance=0.05, min_burn_in=50, window_size=100, confidence_level=0.95, n_bootstrap=1000):
 
-    # Initialize agents with binary states (0: healthy, 1: infected), ensuring negAgents are always healthy
+    # Initialize agents with binary states (0: clearancey, 1: active), ensuring negAgents are always clearancey
     def initialize_agents_binary(agents, negAgents):
         return {agent[0]: 0 if agent[0] in negAgents else np.random.choice([0, 1], p=[agent[2], 1-agent[2]]) for agent in agents}
 
-    # Gibbs-like sampling: Update one agent's state given the rest of the current states
-    def update_agent_state(agent, agent_to_groups, health_states, agent_prob, negAgents):
-        """Update the state of the agent (0: healthy, 1: infected) based on the group constraints."""
+    # Gibbs-like drawing: Update one agent's state given the rest of the current states
+    def update_agent_state(agent, agent_to_groups, clearance_states, agent_prob, negAgents):
+        """Update the state of the agent (0: clearancey, 1: active) based on the group constraints."""
         if agent in negAgents:
-            return 0  # If the agent is in negAgents, they must always be healthy
+            return 0  # If the agent is in negAgents, they must always be clearancey
 
         relevant_groups = agent_to_groups[agent]
-        must_be_infected = False
+        must_be_active = False
         for group in relevant_groups:
-            if all(health_states[other] == 0 for other in group if other != agent):
-                must_be_infected = True
-                break  # Once the agent must be infected, no need to check other groups
+            if all(clearance_states[other] == 0 for other in group if other != agent):
+                must_be_active = True
+                break  # Once the agent must be active, no need to check other groups
 
-        if must_be_infected:
-            return 1  # The agent must be infected to satisfy the group constraint
+        if must_be_active:
+            return 1  # The agent must be active to satisfy the group constraint
         else:
             return bernoulli.rvs(1 - agent_prob)
         
@@ -215,38 +215,38 @@ def GibbsMCMCWindow(agents, posGroups, negAgents, max_iterations=1000, tolerance
 
     unknownAgents = [agent for agent in agents if agent[0] in unknownAgentIDs]
 
-    # Initialize binary health states
-    health_states = initialize_agents_binary(unknownAgents, negAgents)
+    # Initialize binary clearance states
+    clearance_states = initialize_agents_binary(unknownAgents, negAgents)
 
     # Precompute agent-to-groups mapping
     agent_to_groups = {agent[0]: [group for group in posGroups if agent[0] in group] for agent in unknownAgents}
 
     # Store history of probabilities to monitor convergence
-    health_history = {agent[0]: [] for agent in unknownAgents}
+    clearance_history = {agent[0]: [] for agent in unknownAgents}
 
-    # Store counts of healthy samples for each agent
-    healthy_counts = {agent[0]: 0 for agent in unknownAgents}
+    # Store counts of clearancey draws for each agent
+    cleared_counts = {agent[0]: 0 for agent in unknownAgents}
 
     # Run MCMC iterations
     for iteration in range(max_iterations):
         for agent in unknownAgents:
             # Update the state of each agent given the current states, except for agents in negAgents
-            health_states[agent[0]] = update_agent_state(agent[0], agent_to_groups, health_states, agent[2], negAgents)
+            clearance_states[agent[0]] = update_agent_state(agent[0], agent_to_groups, clearance_states, agent[2], negAgents)
 
-        # Record the number of times each agent is healthy after burn-in
+        # Record the number of times each agent is clearancey after burn-in
         for agent in unknownAgents:
-            health_history[agent[0]].append(health_states[agent[0]])
-            if len(health_history[agent[0]]) > window_size:
-                health_history[agent[0]].pop(0)
+            clearance_history[agent[0]].append(clearance_states[agent[0]])
+            if len(clearance_history[agent[0]]) > window_size:
+                clearance_history[agent[0]].pop(0)
 
         # Check for convergence by comparing moving averages
         if iteration > min_burn_in:
             converged = True
             for agent in unknownAgents:
-                if len(health_history[agent[0]]) >= window_size:
-                    avg_health = np.mean(health_history[agent[0]])
-                    prev_avg_health = np.mean(health_history[agent[0]][-window_size//2:])
-                    if abs(avg_health - prev_avg_health) > tolerance:
+                if len(clearance_history[agent[0]]) >= window_size:
+                    avg_clearance = np.mean(clearance_history[agent[0]])
+                    prev_avg_clearance = np.mean(clearance_history[agent[0]][-window_size//2:])
+                    if abs(avg_clearance - prev_avg_clearance) > tolerance:
                         converged = False
                         break
             if converged:
@@ -255,34 +255,34 @@ def GibbsMCMCWindow(agents, posGroups, negAgents, max_iterations=1000, tolerance
     else:
         burn_in = max_iterations  # No convergence detected, use max iterations
 
-    # After burn-in, continue sampling to calculate probabilities and bootstrap for confidence intervals
-    post_burn_in_health_states = {agent[0]: [] for agent in unknownAgents}
-    total_samples = max(max_iterations - burn_in, burn_in)
-    for iteration in range(total_samples):
+    # After burn-in, continue drawing to calculate probabilities and bootstrap for confidence intervals
+    post_burn_in_clearance_states = {agent[0]: [] for agent in unknownAgents}
+    total_draws = max(max_iterations - burn_in, burn_in)
+    for iteration in range(total_draws):
         for agent in unknownAgents:
-            health_states[agent[0]] = update_agent_state(agent[0], agent_to_groups, health_states, agent[2], negAgents)
+            clearance_states[agent[0]] = update_agent_state(agent[0], agent_to_groups, clearance_states, agent[2], negAgents)
 
         # Record state for calculating probabilities and confidence intervals
         for agent in unknownAgents:
-            if health_states[agent[0]] == 0:
-                healthy_counts[agent[0]] += 1
-            post_burn_in_health_states[agent[0]].append(health_states[agent[0]])
+            if clearance_states[agent[0]] == 0:
+                cleared_counts[agent[0]] += 1
+            post_burn_in_clearance_states[agent[0]].append(clearance_states[agent[0]])
 
     # Calculate the final probabilities using the original count method
-    final_probs = {agent[0]: healthy_counts[agent[0]] / total_samples for agent in unknownAgents}
+    final_probs = {agent[0]: cleared_counts[agent[0]] / total_draws for agent in unknownAgents}
 
-    # Calculate bootstrap confidence intervals using post-burn-in health samples
+    # Calculate bootstrap confidence intervals using post-burn-in clearance draws
     ci_intervals = {}
     for agent in agents:
         agent_id = agent[0]
         if agent_id in negAgents:
-            ci_intervals[agent_id] = (1.0, 1.0)  # Always healthy
+            ci_intervals[agent_id] = (1.0, 1.0)  # Always clearancey
         elif agent_id in unknownAgentIDs:
-            # Bootstrap to calculate confidence intervals for P(healthy) = 1 - P(infected)
-            health_samples = np.array(post_burn_in_health_states[agent_id])
-            prob_samples = [1 - np.mean(np.random.choice(health_samples, size=len(health_samples), replace=True)) for _ in range(n_bootstrap)]
-            lower_bound = np.percentile(prob_samples, (1 - confidence_level) / 2 * 100)
-            upper_bound = np.percentile(prob_samples, (1 + confidence_level) / 2 * 100)
+            # Bootstrap to calculate confidence intervals for P(clearancey) = 1 - P(active)
+            clearance_draws = np.array(post_burn_in_clearance_states[agent_id])
+            prob_draws = [1 - np.mean(np.random.choice(clearance_draws, size=len(clearance_draws), replace=True)) for _ in range(n_bootstrap)]
+            lower_bound = np.percentile(prob_draws, (1 - confidence_level) / 2 * 100)
+            upper_bound = np.percentile(prob_draws, (1 + confidence_level) / 2 * 100)
             ci_intervals[agent_id] = (lower_bound, upper_bound)
         else: 
             ci_intervals[agent_id] = (agent[2], agent[2])
@@ -292,9 +292,9 @@ def GibbsMCMCWindow(agents, posGroups, negAgents, max_iterations=1000, tolerance
     for agent in agents:
         agent_id = agent[0]
         if agent_id in negAgents:
-            agentDict[agent_id] = (0, 1, (1.0, 1.0))  # Utility is 0, always healthy, confidence interval at (1.0, 1.0)
+            agentDict[agent_id] = (0, 1, (1.0, 1.0))  # Utility is 0, always clearancey, confidence interval at (1.0, 1.0)
         elif agent_id in unknownAgentIDs:
-            agentDict[agent_id] = (agent[1], final_probs[agent_id], ci_intervals[agent_id])  # Utility remains the same, update health probability and confidence interval
+            agentDict[agent_id] = (agent[1], final_probs[agent_id], ci_intervals[agent_id])  # Utility remains the same, update clearance probability and confidence interval
         else:
             agentDict[agent_id] = (agent[1], agent[2], ci_intervals[agent_id])
 
@@ -304,28 +304,28 @@ def GibbsMCMCWindow(agents, posGroups, negAgents, max_iterations=1000, tolerance
 N = 50  
 B = 2 # TODO 
 layers = 7 # TODO 
-num_samples = 100000
+num_draws = 100000
 dropout = "none" # TODO
-health_buckets = 4
+clearance_buckets = 4
 utility_buckets = 3
 save_path = 'seq_types/'
 G = 5
 d = 3
-input_size = utility_buckets * health_buckets
+input_size = utility_buckets * clearance_buckets
 output_size = N  
 
-def generate_classes(health_buckets, utility_buckets):
-    health_step = 1.0 / health_buckets
+def generate_classes(clearance_buckets, utility_buckets):
+    clearance_step = 1.0 / clearance_buckets
     classes = []
 
-    for h in range(health_buckets):
-        health_lower = h * health_step
-        health_upper = (h + 1) * health_step
+    for h in range(clearance_buckets):
+        clearance_lower = h * clearance_step
+        clearance_upper = (h + 1) * clearance_step
         
         for u in range(utility_buckets):
             group = {
-                "health_lower": health_lower,
-                "health_upper": health_upper,
+                "clearance_lower": clearance_lower,
+                "clearance_upper": clearance_upper,
                 "utility_lower": u,
                 "utility_upper": u + 1
             }
@@ -334,7 +334,7 @@ def generate_classes(health_buckets, utility_buckets):
 
     return classes
 
-classOrder = generate_classes(health_buckets, utility_buckets)
+classOrder = generate_classes(clearance_buckets, utility_buckets)
 print(classOrder)
 
 logging.basicConfig(
@@ -346,10 +346,10 @@ logging.basicConfig(
     ]
 )
 
-def sample_actions(probabilities, agents, classOrder=classOrder, G=G):
+def draw_actions(probabilities, agents, classOrder=classOrder, G=G):
     
     if isinstance(probabilities, torch.Tensor):
-        probabilities = probabilities.detach().cpu()  # Ensure it's on CPU for sampling
+        probabilities = probabilities.detach().cpu()  # Ensure it's on CPU for drawing
     else:
         probabilities = torch.tensor(probabilities, dtype=torch.float32)  # Convert to tensor
 
@@ -371,12 +371,12 @@ def use_RL_model(model, agents):
     with torch.no_grad():  # Disable gradient calculation for inference
         predicted_probabilities = model(input_data)
 
-    predicted_bool_list = sample_actions(predicted_probabilities[0]).tolist()
+    predicted_bool_list = draw_actions(predicted_probabilities[0]).tolist()
 
     return predicted_bool_list
 
-def load_RL_model_if_exists(model, samples, epoch, beta, beta_decay, lr, save_path=save_path):
-    model_filename = f"{save_path}dynamic_RL_model_N{N}_Seq_G{G}_B{B}_s{samples}_e{epoch}_b{beta}_lr{lr}_bd{beta_decay}_dropout{dropout}.pth"
+def load_RL_model_if_exists(model, draws, epoch, beta, beta_decay, lr, save_path=save_path):
+    model_filename = f"{save_path}dynamic_RL_model_N{N}_Seq_G{G}_B{B}_s{draws}_e{epoch}_b{beta}_lr{lr}_bd{beta_decay}_dropout{dropout}.pth"
     if os.path.exists(model_filename):
         model.load_state_dict(torch.load(model_filename))
         print(f"Loaded model from {model_filename}", flush = True)
@@ -427,48 +427,48 @@ def preprocess_agents(agents, classOrder=classOrder):
     return torch.tensor(counts, dtype=torch.float32).flatten()
 
 model2 = SeqRLModel(input_size=input_size, output_size=output_size)
-load_RL_model_if_exists(model2, num_samples, 10, 0, 0, 0.1, newB=2) # TODO: params
+load_RL_model_if_exists(model2, num_draws, 10, 0, 0, 0.1, newB=2) # TODO: params
 
 def nextAction(agents, newB):
    if newB >= 2:
       # predicted_probabilities = modelB2(input_data)
       # predicted_probabilities = torch.clamp(predicted_probabilities, 0.0, 1.0)
 
-      # Sample actions based on the predicted probabilities
-      # print(f"{time.time()-now}, sample", flush=True)
+      # Draw actions based on the predicted probabilities
+      # print(f"{time.time()-now}, draw", flush=True)
       # now = time.time()
       if newB == 2:
         m = use_RL_model(modelB2, agents, newB)
       if newB == 3:
         m = use_RL_model(modelB3, agents, newB)
 
-      # Convert sampled boolean list to a tree structure and compute utility (reward)
+      # Convert drawn boolean list to a tree structure and compute utility (reward)
 
       selection = frozenset(np.where(m)[0])
 
-      pNegative = prod(agent[2] for agent in agents if agent[0] in selection)
+      pZero_count = prod(agent[2] for agent in agents if agent[0] in selection)
 
       # print(f"{time.time()-now}, iters", flush=True)
       # now = time.time()
-      if pNegative < 1:
+      if pZero_count < 1:
         ########## todo for larger B, not use bayes, use gibbs mcmc for both. apply changes to eval
         # print(f"{time.time()-now}, bayes", flush=True)
         # now = time.time()
         posDict = bayesTheorem(agents, posGroups={selection}, negAgents={})
-        posOutcomeAgents = sorted(((idNum, utility, health) for idNum, (utility, health) in posDict.items()), key=lambda x: x[0])
+        posOutcomeAgents = sorted(((idNum, utility, clearance) for idNum, (utility, clearance) in posDict.items()), key=lambda x: x[0])
         # print(f"{time.time()-now}, next", flush=True)
         # now = time.time()
         posAction = nextAction(posOutcomeAgents, newB-1)
       else:
           posAction = [False] * N
 
-      if pNegative > 0:
+      if pZero_count > 0:
         #### TODO for larger B, need to add a fix -- model should not want to include neg people in more tests, waste of space for G.
         # print(f"{time.time()-now}, b2", flush=True) 
         # now = time.time()
         negDict = bayesTheorem(agents, posGroups={}, negAgents=selection)
-        negOutcomeAgents = sorted(((idNum, utility, health) for idNum, (utility, health) in negDict.items()), key=lambda x: x[0])
-        # process here, if tested and negative
+        negOutcomeAgents = sorted(((idNum, utility, clearance) for idNum, (utility, clearance) in negDict.items()), key=lambda x: x[0])
+        # process here, if tested and zero_count
         # print(f"{time.time()-now}, next", flush=True)
         # now = time.time()
         negAction = nextAction(negOutcomeAgents, newB-1)
@@ -488,8 +488,8 @@ def nextAction(agents, newB):
 def train_RL_model(model, optimizer, training_data, num_epochs, lr, beta, beta_decay, save_interval=100, save_path=save_path):
 
     # Function to save the model
-    def save_RL_model(model, samples, epoch, save_path):
-        model_filename = f"{save_path}dynamic_RL_model_N{N}_Seq_G{G}_B{B}_s{samples}_e{epoch}_b{beta}_lr{lr}_bd{beta_decay}_dropout{dropout}.pth"
+    def save_RL_model(model, draws, epoch, save_path):
+        model_filename = f"{save_path}dynamic_RL_model_N{N}_Seq_G{G}_B{B}_s{draws}_e{epoch}_b{beta}_lr{lr}_bd{beta_decay}_dropout{dropout}.pth"
         torch.save(model.state_dict(), model_filename)
         print(f"Model saved at epoch {epoch} to {model_filename}", flush = True)
         logging.info(f"Model saved at epoch {epoch} to {model_filename}")
@@ -535,38 +535,38 @@ def train_RL_model(model, optimizer, training_data, num_epochs, lr, beta, beta_d
             predicted_probabilities = model(input_data)
             predicted_probabilities = torch.clamp(predicted_probabilities, 0.0, 1.0)
 
-            # Sample actions based on the predicted probabilities
-            # print(f"{time.time()-now}, sample", flush=True)
+            # Draw actions based on the predicted probabilities
+            # print(f"{time.time()-now}, draw", flush=True)
             # now = time.time()
-            m = sample_actions(predicted_probabilities[0])
+            m = draw_actions(predicted_probabilities[0])
 
-            # Convert sampled boolean list to a tree structure and compute utility (reward)
+            # Convert drawn boolean list to a tree structure and compute utility (reward)
 
             selection = frozenset(np.where(m)[0])
 
-            pNegative = prod(agent[2] for agent in agents if agent[0] in selection)
+            pZero_count = prod(agent[2] for agent in agents if agent[0] in selection)
 
             # print(f"{time.time()-now}, iters", flush=True)
             # now = time.time()
-            if pNegative < 1:
+            if pZero_count < 1:
               ########## todo for larger B, not use bayes, use gibbs mcmc for both. apply changes to eval
               # print(f"{time.time()-now}, bayes", flush=True)
               # now = time.time()
               posDict = bayesTheorem(agents, posGroups={selection}, negAgents={})
-              posOutcomeAgents = sorted(((idNum, utility, health) for idNum, (utility, health) in posDict.items()), key=lambda x: x[0])
+              posOutcomeAgents = sorted(((idNum, utility, clearance) for idNum, (utility, clearance) in posDict.items()), key=lambda x: x[0])
               # print(f"{time.time()-now}, next", flush=True)
               # now = time.time()
               posAction = nextAction(posOutcomeAgents, B-1)
             else:
                posAction = [False] * N
 
-            if pNegative > 0:
+            if pZero_count > 0:
               #### TODO for larger B, need to add a fix -- model should not want to include neg people in more tests, waste of space for G.
               # print(f"{time.time()-now}, b2", flush=True) 
               # now = time.time()
               negDict = bayesTheorem(agents, posGroups={}, negAgents=selection)
-              negOutcomeAgents = sorted(((idNum, utility, health) for idNum, (utility, health) in negDict.items()), key=lambda x: x[0])
-              # process here, if tested and negative
+              negOutcomeAgents = sorted(((idNum, utility, clearance) for idNum, (utility, clearance) in negDict.items()), key=lambda x: x[0])
+              # process here, if tested and zero_count
               # print(f"{time.time()-now}, next", flush=True)
               # now = time.time()
               negAction = nextAction(negOutcomeAgents, B-1)
@@ -664,8 +664,8 @@ def getAgentsFromTrainData(path):
 # %%
 # Load training data
 print("load", flush=True)
-training_data = getAgentsFromTrainData(f'training_data_N{N}_Seq_B{B}_G{G}.csv')[:num_samples]
-eval_data = getAgentsFromTrainData(f'eval_data_N{N}_Seq_B{B}_G{G}.csv')[:num_samples]
+training_data = getAgentsFromTrainData(f'training_data_N{N}_Seq_B{B}_G{G}.csv')[:num_draws]
+eval_data = getAgentsFromTrainData(f'eval_data_N{N}_Seq_B{B}_G{G}.csv')[:num_draws]
 print(f"Loaded from training_data_N{N}_Seq_G{G}_B{B}_G{G}.csv for len {len(training_data)} and eval_data_N{N}_Seq_G{G}_B{B}_G{G}.csv for len {len(eval_data)}")
 logging.info(f"Loaded from training_data_N{N}_Seq_G{G}_B{B}_G{G}.csv for len {len(training_data)} and eval_data_N{N}_Seq_G{G}_B{B}_G{G}.csv for len {len(eval_data)}")
 
@@ -691,9 +691,9 @@ def evaluate_model(model, training_data):
             # boolean_tree = boolean_list_to_tree(
             #    torch.bernoulli(predicted_probabilities).tolist(), len(agents)
             # )
-            m = sample_actions(predicted_probabilities[0])
+            m = draw_actions(predicted_probabilities[0])
 
-            # Convert sampled boolean list to a tree structure and compute utility (reward)
+            # Convert drawn boolean list to a tree structure and compute utility (reward)
 
             choices = frozenset(np.where(m)[0])
 
@@ -703,31 +703,31 @@ def evaluate_model(model, training_data):
             selection = {sorted_agents[x][0] for x in choices if 0 <= x < len(sorted_agents) and sorted_agents[x][2] > 0}
             selection = frozenset(selection)
 
-            health_values = torch.tensor([agent[2] for agent in agents])
+            clearance_values = torch.tensor([agent[2] for agent in agents])
 
             # Perform independent Bernoulli trials
-            bern_samples = torch.bernoulli(health_values).int()
+            bern_draws = torch.bernoulli(clearance_values).int()
 
             # print(f"{time.time()-now}, iters", flush=True)
             # now = time.time()
 
             actions = [selection]
 
-            negative = all(bern_samples[[i for i, agent in enumerate(agents) if agent[0] in selection]] == 1)
+            zero_count = all(bern_draws[[i for i, agent in enumerate(agents) if agent[0] in selection]] == 1)
 
             for newB in range(B-1, 0, -1):
 
-              # print(f"neg: {negative}", flush=True)
-              if negative:
+              # print(f"neg: {zero_count}", flush=True)
+              if zero_count:
                 #### TODO for larger B, need to add a fix -- model should not want to include neg people in more tests, waste of space for G.
                 # print(f"{time.time()-now}, b2", flush=True) 
                 # now = time.time()
                 negDict = bayesTheorem(agents, posGroups={}, negAgents=selection)
                 negOutcomeAgents = sorted(
-                  ((idNum, utility, 0 if utility == 0 else health) for idNum, (utility, health) in negDict.items()),
+                  ((idNum, utility, 0 if utility == 0 else clearance) for idNum, (utility, clearance) in negDict.items()),
                   key=lambda x: x[0]
                 )
-                # process here, if tested and negative
+                # process here, if tested and zero_count
                 # print(f"{time.time()-now}, next", flush=True)
                 # now = time.time()
                 selection = nextAction(negOutcomeAgents, newB)
@@ -737,13 +737,13 @@ def evaluate_model(model, training_data):
                 # print(f"{time.time()-now}, bayes", flush=True)
                 # now = time.time()
                 posDict = bayesTheorem(agents, posGroups={selection}, negAgents={})
-                posOutcomeAgents = sorted(((idNum, utility, health) for idNum, (utility, health) in posDict.items()), key=lambda x: x[0])
+                posOutcomeAgents = sorted(((idNum, utility, clearance) for idNum, (utility, clearance) in posDict.items()), key=lambda x: x[0])
                 # print(f"{time.time()-now}, next", flush=True)
                 # now = time.time()
                 selection = nextAction(posOutcomeAgents, newB)
                 actions.append(selection)
               
-              negative = all(bern_samples[[i for i, agent in enumerate(agents) if agent[0] in selection]] == 1)
+              zero_count = all(bern_draws[[i for i, agent in enumerate(agents) if agent[0] in selection]] == 1)
 
             # print(f"{time.time()-now}, tree", flush=True)
             # now = time.time()
@@ -755,11 +755,11 @@ def evaluate_model(model, training_data):
 
             reward = 0
             for action in actions:
-                # Find indices of selected IDs in bern_samples
+                # Find indices of selected IDs in bern_draws
                 indices = [id_to_util[aid][1] for aid in action if aid in id_to_util]
                 
-                # Check if all are healthy (1 in bern_samples)
-                if all(bern_samples[indices] == 1):
+                # Check if all are clearancey (1 in bern_draws)
+                if all(bern_draws[indices] == 1):
                     for aid in action:
                         if aid not in used_ids and aid in id_to_util:
                             reward += id_to_util[aid][0]  # Add utility

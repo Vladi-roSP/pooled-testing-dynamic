@@ -44,7 +44,7 @@ def run_regime(name, n, G, k_priors, p_dist, u_dist, K=20, base_seed=0):
     for trial in range(K):
         rng = random.Random(base_seed + 10_000 + trial)
         p_prior, u = _gen_population(n, p_dist, u_dist, rng)
-        # Use a fresh seed for the trial's sampling, deterministic per trial
+        # Use a fresh seed for the trial's drawing, deterministic per trial
         res = run_trial(p_prior, u, n, G, k_priors,
                         trial_seed=base_seed + 1000 + trial)
         if res is not None:

@@ -1,5 +1,5 @@
 """
-Sprint 3 large-scale experiments for augmented pooled testing.
+Sprint 3 large-scale experiments for augmented adaptive group counting.
 
 Run with:
     python augmented/sprint3_experiments.py --quick
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from augmented.baselines import u_max, u_single
 from augmented.greedy import greedy_myopic_expected_utility
-from augmented.infection_reward_greedy import greedy_myopic_beta_expected_utility
+from augmented.state_reward_greedy import greedy_myopic_beta_expected_utility
 from augmented.pool_solvers import mosek_best_pool
 
 
@@ -475,7 +475,7 @@ def main():
     parser.add_argument('--n-instances', type=int, default=50)
     parser.add_argument(
         '--quick', action='store_true',
-        help='Run 3 instances for testing',
+        help='Run 3 instances for counting',
     )
     parser.add_argument('--output-dir', default='results')
     args = parser.parse_args()

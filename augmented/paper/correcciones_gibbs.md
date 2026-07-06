@@ -8,7 +8,7 @@ moves).
 
 ## Qué hace el Gibbs y por qué se necesita
 
-`gibbs_update` aproxima por muestreo las probabilidades posteriores de infección
+`gibbs_update` aproxima por muestreo las probabilidades posteriores de estado latente
 cuando enumerar los 2^n perfiles es inviable. La inferencia exacta es intratable en
 general, así que para escalas grandes se muestrean perfiles consistentes con los
 conteos observados (la restricción A x = r) y se estiman las marginales como
@@ -18,15 +18,15 @@ factible.
 
 ## El bug: la cadena no era ergódica
 
-El muestreador anterior quedaba atrapado. Sus movimientos —resamplear un sitio,
-intercambiar un infectado por un sano dentro de un pool, y bloques— preservan todos
-el número total de infectados, así que la cadena nunca podía cruzar entre
+El muestreador anterior quedaba atrapado. Sus movimientos —redrawar un sitio,
+intercambiar un activo por un limpio dentro de un pool, y bloques— preservan todos
+el número total de activos, así que la cadena nunca podía cruzar entre
 configuraciones con distinto total y devolvía marginales sesgadas en pools
 solapados.
 
 El caso mínimo lo deja claro. Con tests {0,1}=1 y {1,2}=1 y prior 0.15 para los
 tres, los perfiles factibles son (1,0,1) y (0,1,0), que difieren en las tres
-coordenadas y en el total de infectados (dos contra uno). La posterior exacta es
+coordenadas y en el total de activos (dos contra uno). La posterior exacta es
 [0.15, 0.85, 0.15], pero el muestreador viejo devolvía [0,1,0] o [1,0,1] según la
 semilla: confiado y falso. La causa exacta es que para saltar de un perfil al otro
 hay que voltear los tres agentes a la vez, y ningún movimiento local lo permite.
@@ -63,7 +63,7 @@ completo.
 El muestreador tuvo intervenciones previas que conviene conocer para no
 confundirlas con esta. El commit `7ccad73` (3 de junio de 2026) fue un parche
 provisional de validez: subió el atajo exacto a un umbral de agentes activos,
-sembró un estado inicial consistente y añadió un guard para contar solo muestras
+sembró un estado inicial consistente y añadió un guard para contar solo registros
 válidas. Cerró un problema de consistencia, pero no tocó la raíz de la mezcla, así
 que la cadena seguía sin ser ergódica. Antes de él, `44f7e5f` ya había intentado
 arreglar la mezcla con movimientos de swap, insuficientes por la misma razón. La
@@ -75,7 +75,7 @@ cambien el conteo total.
 Forzando el camino del MCMC (bajando el umbral por componente) sobre el caso
 mínimo, las marginales convergen a [0.15, 0.85, 0.15] en todas las semillas
 probadas, con error máximo por debajo de 0.03; antes el error era de 0.15 y
-dependía de la semilla. Las pruebas viven en `tests_correctness_fixes.py` (la de
+dependía de la semilla. Las consultas viven en `tests_correctness_fixes.py` (la de
 ergodicidad y la de componentes independientes) y en `tests_gibbs_validity.py`
 (25 escenarios, todos dentro de tolerancia). La suite completa quedó en verde.
 

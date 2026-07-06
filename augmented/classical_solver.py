@@ -1,9 +1,9 @@
 """
-Brute-force DP solver for optimal CLASSICAL dynamic pooled testing (U^D).
+Brute-force DP solver for optimal CLASSICAL dynamic adaptive group counting (U^D).
 
-Classical = binary test result: negative (pool ∩ Z = ∅) or positive (pool ∩ Z ≠ ∅).
+Classical = binary test result: zero_count (pool ∩ Z = ∅) or nonzero_count (pool ∩ Z ≠ ∅).
 The key difference from the augmented solver: branching factor is always 2
-(positive/negative), not |pool|+1 (exact count).
+(nonzero_count/zero_count), not |pool|+1 (exact count).
 
 Same DP structure as solver.py but with binary partitioning.
 """
@@ -16,8 +16,8 @@ _MAX_N = 14
 def solve_classical_dynamic(p, u, B, G):
     """Solve for the optimal classical dynamic strategy via brute-force DP.
 
-    Classical test: result is 0 (negative, nobody infected in pool)
-    or 1 (positive, at least one infected).
+    Classical test: result is 0 (zero_count, nobody active in pool)
+    or 1 (nonzero_count, at least one active).
 
     Returns (optimal_value, None).
     Policy reconstruction omitted for simplicity — we only need the value.
@@ -30,7 +30,7 @@ def solve_classical_dynamic(p, u, B, G):
 
     q = [1.0 - pi for pi in p]
 
-    # Pr(Z = z) for every infection profile
+    # Pr(Z = z) for every latent-state profile
     num_profiles = 1 << n
     w = [0.0] * num_profiles
     for z in range(num_profiles):
@@ -70,9 +70,9 @@ def solve_classical_dynamic(p, u, B, G):
         best_value = -1.0
 
         for pool in pools:
-            # CLASSICAL: partition into negative (pool ∩ Z = ∅) and positive (pool ∩ Z ≠ ∅)
-            neg_list = []  # profiles where pool tests negative
-            pos_list = []  # profiles where pool tests positive
+            # CLASSICAL: partition into zero_count (pool ∩ Z = ∅) and nonzero_count (pool ∩ Z ≠ ∅)
+            neg_list = []  # profiles where pool tests zero_count
+            pos_list = []  # profiles where pool tests nonzero_count
             for z in remaining:
                 if pool & z == 0:
                     neg_list.append(z)

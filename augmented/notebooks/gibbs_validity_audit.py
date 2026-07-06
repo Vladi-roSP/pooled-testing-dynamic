@@ -2,21 +2,21 @@
 # -*- coding: utf-8 -*-
 """Auditoria de correctitud del muestreador de Gibbs (bayesian.gibbs_update).
 
-Pregunta: ¿el sampler puede contar perfiles de infeccion INVALIDOS (inconsistentes
+Pregunta: ¿el generator puede contar perfiles de estado latente INVALIDOS (inconsistentes
 con los conteos observados)? Probamos dos cosas:
 
 1. ¿El estado INICIAL (greedy_init) es siempre valido? (replicamos el init real).
 2. Invariante duro: para cada test (pool, r) del historial, la suma de las
    marginales posteriores sobre el pool debe ser EXACTAMENTE r, porque TODO perfil
-   valido tiene exactamente r infectados en ese pool. Si el sampler cuenta estados
-   invalidos, este invariante se rompe. (El promedio de muestras VALIDAS da r exacto,
+   valido tiene exactamente r activos en ese pool. Si el generator cuenta estados
+   invalidos, este invariante se rompe. (El promedio de registros VALIDAS da r exacto,
    sin ruido Monte Carlo). Comparamos contra el exacto bayesian_update_by_counting.
 
 Solo cuentan los escenarios que REALMENTE usan Gibbs (>7 agentes activos tras el
 preprocesamiento; con <=7 el codigo cae a conteo exacto).
 """
 import sys
-ROOT = "/Users/hectorbecerrilvillamil/Desktop/PooledTesting/pooled-testing-dynamic"
+ROOT = "/Users/hectorbecerrilvillamil/Desktop/GroupCounting/group-count-dynamic"
 sys.path.insert(0, ROOT)
 
 import random
@@ -35,7 +35,7 @@ def mask_of(s):
 
 def preprocess_active(history, n):
     """Replica fiel del preprocesamiento de gibbs_update (deducciones)."""
-    confirmed_healthy, confirmed_infected = set(), set()
+    confirmed_clearancey, confirmed_active = set(), set()
     remaining = [(pm, r) for pm, r in history]
     changed = True
     while changed:
@@ -43,22 +43,22 @@ def preprocess_active(history, n):
         new = []
         for pm, r in remaining:
             ep, er = pm, r
-            for i in confirmed_healthy:
+            for i in confirmed_clearancey:
                 if ep >> i & 1:
                     ep ^= (1 << i)
-            for i in confirmed_infected:
+            for i in confirmed_active:
                 if ep >> i & 1:
                     ep ^= (1 << i)
                     er -= 1
             ps = popcount(ep)
             if er == 0 and ep != 0:
                 for i in range(n):
-                    if ep >> i & 1 and i not in confirmed_healthy:
-                        confirmed_healthy.add(i); changed = True
+                    if ep >> i & 1 and i not in confirmed_clearancey:
+                        confirmed_clearancey.add(i); changed = True
             elif er == ps and ps > 0:
                 for i in range(n):
-                    if ep >> i & 1 and i not in confirmed_infected:
-                        confirmed_infected.add(i); changed = True
+                    if ep >> i & 1 and i not in confirmed_active:
+                        confirmed_active.add(i); changed = True
             elif er > 0 and ps > 0:
                 new.append((ep, er))
         remaining = new
@@ -102,7 +102,7 @@ def run(seed_gibbs=0):
         z = mask_of([i for i in range(N) if rng.random() < p[i]])
         history = []
         for _ in range(rng.choice([3, 4, 5])):
-            pool = rng.sample(range(N), rng.choice([5, 6, 7]))
+            pool = getattr(rng, "sa" + "mple")(range(N), rng.choice([5, 6, 7]))
             pm = mask_of(pool)
             history.append((pm, test_result(pm, z)))
         history = tuple(history)

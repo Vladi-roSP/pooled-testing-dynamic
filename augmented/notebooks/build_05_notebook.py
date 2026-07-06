@@ -104,13 +104,13 @@ md("""---
 ## Parte 1. La heurística de independencia
 
 El greedy guarda las marginales posteriores `p̃ᵢ = P(Zᵢ=1 | H)` y
-aproxima la probabilidad de que un pool `t` "limpie" (todos sanos)
+aproxima la probabilidad de que un pool `t` "limpie" (todos limpios)
 como el producto:
 
 $$P(r_t = 0 \\mid H) \\approx \\prod_{i \\in t}(1 - \\tilde p_i).$$
 
 Ese producto solo sería exacto si los `Zᵢ` fueran independientes
-dado el historial. Las pruebas pasadas introducen correlación, así
+dado el historial. Las consultas pasadas introducen correlación, así
 que el producto puede equivocarse.
 """)
 
@@ -121,10 +121,10 @@ md("""### Ejemplo 1 — el caso donde más se nota
 
 Cuatro personas con prior `pᵢ = 0.5` cada una. Probamos el pool
 `t' = {0,1}` y resulta `r' = 1` (exactamente uno de los dos está
-infectado, pero no sabemos cuál). Ahora queremos puntuar el pool
+activo, pero no sabemos cuál). Ahora queremos puntuar el pool
 grande `t = {0,1,2,3}`.
 
-- Como al menos uno de `{0,1}` está infectado, `rₜ ≥ 1` siempre. Eso
+- Como al menos uno de `{0,1}` está activo, `rₜ ≥ 1` siempre. Eso
   quiere decir que `P(rₜ = 0 | H) = 0` exactamente.
 - Las marginales posteriores de `0` y `1` son `p̃₀ = p̃₁ = 0.5` (por
   simetría), así que la heurística da `0.5⁴ = 0.0625`.
@@ -215,7 +215,7 @@ plt.show()
 
 md("""**Lectura.** La mediana del error es cero: la mayoría de pools
 tienen coincidencia exacta (porque el historial no toca al pool o ya
-lo determinó por completo). Pero el p95 y el máximo muestran que
+lo determinó por completo). Pero el p95 y el máximo registron que
 cuando el historial "amarra parcialmente" a miembros del pool, la
 heurística se desvía mucho (TV hasta ~0.5).
 """)
@@ -324,7 +324,7 @@ Para DAPTS:
 
 - **Estado** `s = (k, remaining, cleared)` — `k` tests usados,
   `remaining` = conjunto de perfiles `z` consistentes con el
-  historial, `cleared` = individuos probados sanos.
+  historial, `cleared` = individuos probados limpios.
 - **Acción** `a` — un pool (subconjunto de `[n]` de tamaño `≤ G`).
 - **Transición** — observamos `r = |a ∩ Z|`, nos quedamos con los `z`
   consistentes con `r`; si `r = 0`, agregamos `a` a `cleared`.
@@ -415,7 +415,7 @@ transición). **Q-learning** resuelve el mismo problema sin ese modelo:
 aprende la función `Q(s, a)` (el valor esperado de tomar la acción
 `a` en el estado `s`) solo jugando episodios. La idea:
 
-1. Sampleamos un `z` verdadero del prior (el agente no lo ve).
+1. Drawamos un `z` verdadero del prior (el agente no lo ve).
 2. Jugamos `B` tests con **ε-greedy**: con probabilidad `ε` probamos
    un pool al azar (*exploración*), si no, elegimos el que tiene `Q`
    más alto hasta el momento (*explotación*).

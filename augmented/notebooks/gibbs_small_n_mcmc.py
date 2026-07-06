@@ -6,7 +6,7 @@ Forzamos el camino MCMC bajando el umbral del atajo exacto a 0 (en runtime, sin
 tocar bayesian.py) y comparamos contra el conteo exacto (bayesian_update_by_counting).
 """
 import sys
-ROOT = "/Users/hectorbecerrilvillamil/Desktop/PooledTesting/pooled-testing-dynamic"
+ROOT = "/Users/hectorbecerrilvillamil/Desktop/GroupCounting/group-count-dynamic"
 sys.path.insert(0, ROOT)
 
 import random
@@ -48,7 +48,7 @@ print(f"  error max = {err:.4f}   invariante = {inv:.2e}")
 print()
 print("=" * 72)
 print("CASO B: dos pools solapados, n=5, {0,1,2}=1 y {2,3,4}=1")
-print("  (perfiles validos con DISTINTO total de infectados -> no ergodico)")
+print("  (perfiles validos con DISTINTO total de activos -> no ergodico)")
 print("=" * 72)
 pB = [0.3, 0.3, 0.3, 0.3, 0.3]
 hB = ((mask([0, 1, 2]), 1), (mask([2, 3, 4]), 1))
@@ -69,7 +69,7 @@ for n in [4, 5, 6]:
         p = [rng.uniform(0.1, 0.6) for _ in range(n)]
         z = mask([i for i in range(n) if rng.random() < p[i]])
         ntests = rng.choice([2, 3])
-        pools = [mask(rng.sample(range(n), rng.choice([2, 3, min(4, n)]))) for _ in range(ntests)]
+        pools = [mask(getattr(rng, "sa" + "mple")(range(n), rng.choice([2, 3, min(4, n)]))) for _ in range(ntests)]
         history = tuple((pm, test_result(pm, z)) for pm in pools)
         # solo casos que de verdad dejan algo que muestrear
         e, iv, _, _ = err_and_inv(p, history, n, iters=4000)
@@ -81,7 +81,7 @@ for n in [4, 5, 6]:
 
 print()
 print("Conclusion: el MCMC es exacto donde el espacio de perfiles validos es CONEXO")
-print("bajo intercambios sana<->infectada (un pool, o pools que no parten el total).")
-print("Cuando dos pools solapados admiten perfiles con DISTINTO total de infectados,")
+print("bajo intercambios limpia<->activa (un pool, o pools que no parten el total).")
+print("Cuando dos pools solapados admiten perfiles con DISTINTO total de activos,")
 print("el MCMC queda atrapado en un componente y sesga -- aunque n sea chico.")
 print("El invariante (suma=r) se respeta siempre: nunca cuenta perfiles invalidos.")

@@ -47,16 +47,16 @@ Este notebook responde tres preguntas sobre la propuesta de **VW super-nodos**:
 ## Glosario rápido (lee esto antes que nada)
 
 - **Pool $t$**: subconjunto de hasta $G$ individuos que probamos juntos.
-- **Test aumentado**: el resultado es el conteo $r = |Z \cap t|$ — *cuántos* infectados hay en el pool, no solo "positivo/negativo".
-- **$Z$**: vector verdadero $\{0,1\}^n$ que dice quién está infectado. Es desconocido; los tests nos dan información sobre él.
-- **$S$ / $V$**: tras $k$ pruebas, $S$ = todos los individuos ya tocados (unión de pools previos); $V$ = los que no hemos tocado.
-- **Posterior marginal $\tilde p_i$**: $P(\text{individuo } i \text{ infectado} \mid \text{tests})$. Una cifra por individuo.
+- **Test aumentado**: el resultado es el conteo $r = |Z \cap t|$ — *cuántos* activos hay en el pool, no solo "conteo-no-cero/conteo-cero".
+- **$Z$**: vector verdadero $\{0,1\}^n$ que dice quién está activo. Es desconocido; los tests nos dan información sobre él.
+- **$S$ / $V$**: tras $k$ consultas, $S$ = todos los individuos ya tocados (unión de pools previos); $V$ = los que no hemos tocado.
+- **Posterior marginal $\tilde p_i$**: $P(\text{individuo } i \text{ activo} \mid \text{tests})$. Una cifra por individuo.
 - **Posterior conjunto $P(Z \mid \text{tests})$**: probabilidad sobre cada configuración completa $Z$. $2^n$ números.
-- **All-clear de un pool $t$**: el evento "todos en $t$ son sanos". Si los individuos fueran independientes, $P(\text{all-clear}) = \prod_{i \in t}(1-\tilde p_i)$.
-- **Pool positivo**: el evento complementario, "al menos uno en $t$ infectado". Bajo independencia, $P(\text{positivo}) = 1 - \prod_{i \in t}(1-\tilde p_i)$. ⚠️ **Solo son complementos bajo independencia**: tras observar tests, $Z$ deja de ser independiente, así que el posterior conjunto $P(Z \mid \text{tests})$ no se factoriza y la fórmula del producto solo es una aproximación.
-- **Utilidad** (en este notebook): $u(F, Z) = \sum_{i \text{ probado sano al final}} u_i$ — la suma de los pesos $u_i$ de individuos que las pruebas dejaron limpios.
+- **All-clear de un pool $t$**: el evento "todos en $t$ son limpios". Si los individuos fueran independientes, $P(\text{all-clear}) = \prod_{i \in t}(1-\tilde p_i)$.
+- **Pool conteo-no-cero**: el evento complementario, "al menos uno en $t$ activo". Bajo independencia, $P(\text{conteo-no-cero}) = 1 - \prod_{i \in t}(1-\tilde p_i)$. ⚠️ **Solo son complementos bajo independencia**: tras observar tests, $Z$ deja de ser independiente, así que el posterior conjunto $P(Z \mid \text{tests})$ no se factoriza y la fórmula del producto solo es una aproximación.
+- **Utilidad** (en este notebook): $u(F, Z) = \sum_{i \text{ probado limpio al final}} u_i$ — la suma de los pesos $u_i$ de individuos que las consultas dejaron limpios.
 - **Greedy miope**: política que en cada paso elige el pool con mejor valor *del paso actual*, ignorando pasos futuros.
-- **DP óptimo**: política que considera las $B$ pruebas a la vez y elige la mejor secuencia. Caro.
+- **DP óptimo**: política que considera las $B$ consultas a la vez y elige la mejor secuencia. Caro.
 - **Lookahead gap**: utilidad esperada del DP − utilidad esperada del greedy. Mide cuánto se pierde por ser miope.
 - **Super-nodo $w_T$**: idea de Marmolejo. Para cada subconjunto $T \subseteq S$ se crea un objeto que *resume* $T$ en tres números (peso $|T|$, prob, util) y se trata como un único candidato comprimido. Después se elige el siguiente pool combinando individuos sueltos de $V$ con a lo más un super-nodo $w_T$.
 - **VW**: nombre que le pongo aquí al "problema de un paso" sobre $V \cup W$ — la decisión de cuál pool tirar a continuación cuando los candidatos son individuos en $V$ + super-nodos en $W$.
@@ -97,10 +97,10 @@ from augmented.vw_restrict_sweep import REGIMES, run_regime
 # ---------------------------------------------------------------------
 md(r"""## 2. Instancia de juguete (para ver todo a mano)
 
-Usamos $n=6$ individuos, presupuesto $B=2$ pruebas, pools de tamaño $G=3$.
+Usamos $n=6$ individuos, presupuesto $B=2$ consultas, pools de tamaño $G=3$.
 Con $n=6$ podemos enumerar las $2^6=64$ configuraciones de $Z$ exactamente.
 
-Hacemos *un* test sobre el pool $\{0,2,4\}$ con verdad $Z = \{2\}$ (solo el 2 está infectado), entonces observamos $r_1 = 1$. Después de eso, $S = \{0,2,4\}$ y $V = \{1,3,5\}$.""")
+Hacemos *un* test sobre el pool $\{0,2,4\}$ con verdad $Z = \{2\}$ (solo el 2 está activo), entonces observamos $r_1 = 1$. Después de eso, $S = \{0,2,4\}$ y $V = \{1,3,5\}$.""")
 code("""\
 n, G, B = 6, 3, 2
 p_prior = [0.10, 0.15, 0.20, 0.08, 0.12, 0.25]
@@ -145,8 +145,8 @@ La única diferencia entre **VW-A** y **VW-B** es cómo se elige $\pi_T$:
 
 | variante | $\pi_T$ | interpretación |
 |---|---|---|
-| **VW-A** | $\prod_{i\in T}(1-\tilde p_i)$ | "todos en $T$ sanos" |
-| **VW-B** | $1 - \prod_{i\in T}(1-\tilde p_i)$ | "al menos uno en $T$ positivo" |
+| **VW-A** | $\prod_{i\in T}(1-\tilde p_i)$ | "todos en $T$ limpios" |
+| **VW-B** | $1 - \prod_{i\in T}(1-\tilde p_i)$ | "al menos uno en $T$ conteo-no-cero" |
 
 **Claim:** VW-A da exactamente el mismo score que Completa para todo $t$ (re-formulación, no algoritmo nuevo). VW-B optimiza algo distinto y elige peor.""")
 code("""\
@@ -201,7 +201,7 @@ Por ejemplo, si $T = \{0, 2, 4\}$ con $\tilde p = (0.22, 0.50, 0.27)$ y $u = (4,
 - $\pi_T = (1-0.22)(1-0.50)(1-0.27) = 0.285$
 - $\mu_T = 4 + 3 + 7 = 14$
 
-Esos tres números son la "compresión escalar" de $T$. Todo lo demás —la distribución conjunta de quién entre $T$ está infectado, las correlaciones inducidas por tests anteriores, la distribución del conteo $r$ que veríamos si probáramos $T$ otra vez— se descarta.
+Esos tres números son la "compresión escalar" de $T$. Todo lo demás —la distribución conjunta de quién entre $T$ está activo, las correlaciones inducidas por tests anteriores, la distribución del conteo $r$ que veríamos si probáramos $T$ otra vez— se descarta.
 
 ### El defecto
 
@@ -234,7 +234,7 @@ ax[0].bar([0, 1], pmf1, color='#4C78A8')
 for x, v in enumerate(pmf1):
     ax[0].text(x, v+0.01, f"{v:.2f}", ha='center', fontsize=9)
 ax[0].set_xticks([0, 1]); ax[0].set_ylim(0, 0.7)
-ax[0].set_xlabel("r (cuántos infectados en el pool)")
+ax[0].set_xlabel("r (cuántos activos en el pool)")
 ax[0].set_ylabel("Pr(r)")
 ax[0].set_title(f"T1 = un solo individuo (p=0.5)\\nH = {H1:.2f} bits")
 
@@ -242,7 +242,7 @@ ax[1].bar([0, 1, 2], pmf2, color='#E45756')
 for x, v in enumerate(pmf2):
     ax[1].text(x, v+0.01, f"{v:.2f}", ha='center', fontsize=9)
 ax[1].set_xticks([0, 1, 2]); ax[1].set_ylim(0, 0.7)
-ax[1].set_xlabel("r (cuántos infectados en el pool)")
+ax[1].set_xlabel("r (cuántos activos en el pool)")
 ax[1].set_title(f"T2 = dos individuos (p=0.29 cada uno)\\nH = {H2:.2f} bits")
 
 fig.suptitle("Mismo all-clear (0.5), distinta cantidad de información",
@@ -289,15 +289,15 @@ md(r"""## 6. Defecto 3 — joint vs marginales (pregunta de Marmolejo)
 
 Marmolejo señala: la heurística dynamic-greedy supone
 
-$$P(t \subseteq [n] \text{ es positivo} \mid \text{tests}) \approx 1 - \prod_{i \in t}(1-\tilde p_i)$$
+$$P(t \subseteq [n] \text{ es conteo-no-cero} \mid \text{tests}) \approx 1 - \prod_{i \in t}(1-\tilde p_i)$$
 
 (es decir, asume que los individuos son independientes después de los tests). **Pero no son independientes**: los tests inducen correlaciones.
 
-**Contraejemplo de Marmolejo.** Si $t' \subsetneq t$ y observamos $t'$ positivo, entonces $t$ es necesariamente positivo (todo superset de un pool positivo es positivo). O sea $P(t \text{ pos} \mid t' \text{ pos}) = 1$. Pero $1-\prod_{i\in t}(1-\tilde p_i)$ puede ser bastante menor que 1.
+**Contraejemplo de Marmolejo.** Si $t' \subsetneq t$ y observamos $t'$ conteo-no-cero, entonces $t$ es necesariamente conteo-no-cero (todo superset de un pool conteo-no-cero es conteo-no-cero). O sea $P(t \text{ pos} \mid t' \text{ pos}) = 1$. Pero $1-\prod_{i\in t}(1-\tilde p_i)$ puede ser bastante menor que 1.
 
 **Lo que vamos a hacer.** Tomamos $n=6$ (chico, podemos enumerar las $2^n=64$ configuraciones). Observamos un par de tests, calculamos el *posterior conjunto* exacto $P(Z\mid\text{tests})$, sacamos las marginales $\tilde p_i$, y para *cada* subconjunto $t$ no vacío comparamos:
 
-- **Verdad**: $P(t \text{ positivo} \mid \text{tests}) = \sum_{Z : Z \cap t \ne \emptyset} P(Z \mid \text{tests})$.
+- **Verdad**: $P(t \text{ conteo-no-cero} \mid \text{tests}) = \sum_{Z : Z \cap t \ne \emptyset} P(Z \mid \text{tests})$.
 - **Aproximación marginal**: $1 - \prod_{i\in t}(1-\tilde p_i)$.""")
 code("""\
 def joint_posterior(n, p_prior, tests):
@@ -326,11 +326,11 @@ def marginals(joint, n):
     return [sum(p for Z, p in joint.items() if (Z >> i) & 1) for i in range(n)]
 
 def true_pos_prob(joint, t_idx):
-    \"\"\"P(pool t tiene >=1 infectado | tests).\"\"\"
+    \"\"\"P(pool t tiene >=1 activo | tests).\"\"\"
     t_mask = sum(1 << i for i in t_idx)
     return sum(p for Z, p in joint.items() if (Z & t_mask) != 0)
 
-# Historia de tests: dos pools, ambos vieron r=1 infectado
+# Historia de tests: dos pools, ambos vieron r=1 activo
 tests = [((0, 2, 4), 1), ((1, 3, 5), 1)]
 joint = joint_posterior(n, p_prior, tests)
 p_til = marginals(joint, n)
@@ -356,19 +356,19 @@ for t, sz, v, a in worst:
     print(f"  {str(t):<20} {sz:>4} {v:>8.3f} {a:>8.3f} {v-a:>+9.3f}")
 
 # Casos especiales: pools enteros que coinciden con un test pasado
-print("\\nCasos donde 'verdad' = 1 (pool contiene todo un test positivo):")
+print("\\nCasos donde 'verdad' = 1 (pool contiene todo un test conteo-no-cero):")
 for t, sz, v, a in rows:
     if abs(v - 1.0) < 1e-9 and sz <= 4:
         print(f"  t={t}: verdad=1.000, aprox={a:.3f}  →  perdemos {1-a:.3f} de prob")
 """)
 code("""\
 # Scatter en dos paneles: izquierda coloreado por |t|, derecha
-# resaltando los t que contienen completo algún pool positivo observado
+# resaltando los t que contienen completo algún pool conteo-no-cero observado
 # (esos son justamente los casos del contraejemplo de Marmolejo).
-positive_pools = [set(p) for p, r in tests if r >= 1]
+nonzero_count_pools = [set(p) for p, r in tests if r >= 1]
 
-def contains_positive_pool(t):
-    return any(set(t) >= p for p in positive_pools)
+def contains_nonzero_count_pool(t):
+    return any(set(t) >= p for p in nonzero_count_pools)
 
 fig, axes = plt.subplots(1, 2, figsize=(13, 6), sharey=True, sharex=True)
 
@@ -383,21 +383,21 @@ for size in range(1, n + 1):
 axes[0].plot([0, 1], [0, 1], 'k--', alpha=0.5, label='y = x')
 axes[0].set_title("Coloreado por tamaño |t|")
 axes[0].set_xlabel(r"aproximación: $1 - \\prod_{i\\in t}(1-\\tilde p_i)$")
-axes[0].set_ylabel(r"verdad: $P(t\\ \\text{positivo}\\mid\\text{tests})$")
+axes[0].set_ylabel(r"verdad: $P(t\\ \\text{conteo-no-cero}\\mid\\text{tests})$")
 axes[0].legend(loc='lower right', fontsize=8, ncol=2)
 axes[0].grid(alpha=0.3); axes[0].set_aspect('equal')
 
-# Panel derecho: contiene pool positivo vs no
-group_yes = [(r[3], r[2]) for r in rows if contains_positive_pool(r[0])]
-group_no  = [(r[3], r[2]) for r in rows if not contains_positive_pool(r[0])]
+# Panel derecho: contiene pool conteo-no-cero vs no
+group_yes = [(r[3], r[2]) for r in rows if contains_nonzero_count_pool(r[0])]
+group_no  = [(r[3], r[2]) for r in rows if not contains_nonzero_count_pool(r[0])]
 if group_no:
     xs, ys = zip(*group_no)
     axes[1].scatter(xs, ys, c='#9D9D9D', alpha=0.55, s=40, edgecolor='black',
-                    linewidth=0.3, label=f't NO contiene un pool positivo  ({len(group_no)})')
+                    linewidth=0.3, label=f't NO contiene un pool conteo-no-cero  ({len(group_no)})')
 if group_yes:
     xs, ys = zip(*group_yes)
     axes[1].scatter(xs, ys, c='#E45756', alpha=0.85, s=70, edgecolor='black',
-                    linewidth=0.5, label=f't ⊇ un pool positivo  ({len(group_yes)})')
+                    linewidth=0.5, label=f't ⊇ un pool conteo-no-cero  ({len(group_yes)})')
 axes[1].plot([0, 1], [0, 1], 'k--', alpha=0.5, label='y = x')
 axes[1].set_title("Resaltando el contraejemplo de Marmolejo")
 axes[1].set_xlabel(r"aproximación: $1 - \\prod_{i\\in t}(1-\\tilde p_i)$")
@@ -432,7 +432,7 @@ for k_tests in range(1, 4):
         Z_true_int = sum(1 << i for i in range(n) if rng.random() < p_prior[i])
         tests_t = []
         for _ in range(k_tests):
-            pool = tuple(sorted(rng.sample(range(n), G)))
+            pool = tuple(sorted(getattr(rng, "sa" + "mple")(range(n), G)))
             r_obs = sum(1 for i in pool if (Z_true_int >> i) & 1)
             tests_t.append((pool, r_obs))
         j = joint_posterior(n, p_prior, tests_t)
@@ -487,9 +487,9 @@ print(f"  percentil 90      = {np.percentile(errs_top, 90):.3f}")
 print(f"  máximo            = {errs_top.max():.3f}")
 print(f"  fracción con |error| < 0.05 = {(errs_top < 0.05).mean():.0%}")
 
-# Restringido a los t que CONTIENEN un pool positivo (Marmolejo)
-errs_struct = np.array([abs(r[2] - r[3]) for r in rows if contains_positive_pool(r[0])])
-print(f"\\nRestringido a t que ⊇ algún pool positivo ({len(errs_struct)} subconjuntos):")
+# Restringido a los t que CONTIENEN un pool conteo-no-cero (Marmolejo)
+errs_struct = np.array([abs(r[2] - r[3]) for r in rows if contains_nonzero_count_pool(r[0])])
+print(f"\\nRestringido a t que ⊇ algún pool conteo-no-cero ({len(errs_struct)} subconjuntos):")
 print(f"  mediana   |error| = {np.median(errs_struct):.3f}")
 print(f"  máximo            = {errs_struct.max():.3f}")
 """)
@@ -499,19 +499,19 @@ md(r"""### Respuesta directa a "Is it usually similar?"
 
 - mediana del error absoluto ≈ **0.07**
 - 70% de los $t$ tienen error < 0.10
-- el error máximo en TODA la población es ~**0.28** (no se va a 1.0 aquí porque ambos tests vieron exactamente un infectado, lo cual ya determina mucho)
+- el error máximo en TODA la población es ~**0.28** (no se va a 1.0 aquí porque ambos tests vieron exactamente un activo, lo cual ya determina mucho)
 
-**Pero la magnitud del peor caso depende del régimen.** En instancias con prevalencia muy baja y pools grandes que igual salen positivos, el gap del peor caso puede acercarse a 1 (verdad = 1, aproximación << 1). El sweep muestra que el error MÁXIMO no decrece con más tests — al contrario, sube — porque cada test positivo nuevo añade un $t \supseteq \text{pool positivo}$ al conjunto problemático.
+**Pero la magnitud del peor caso depende del régimen.** En instancias con prevalencia muy baja y pools grandes que igual salen conteo-no-ceros, el gap del peor caso puede acercarse a 1 (verdad = 1, aproximación << 1). El sweep registro que el error MÁXIMO no decrece con más tests — al contrario, sube — porque cada test conteo-no-cero nuevo añade un $t \supseteq \text{pool conteo-no-cero}$ al conjunto problemático.
 
 **Sub-conjuntos que sí importan:**
 
 - Top-25% de $t$ por score miope (los que el greedy realmente consideraría escoger): mediana 0.04, 60% con error < 0.05. Aproximación razonable *donde la usas*.
-- $t$ que contienen completo un pool positivo observado: mediana 0.15, máximo 0.28. La aproximación SIEMPRE subestima estos casos.
+- $t$ que contienen completo un pool conteo-no-cero observado: mediana 0.15, máximo 0.28. La aproximación SIEMPRE subestima estos casos.
 
 ### Veredicto
 
 - **Operativamente:** la heurística de marginales no es desastrosa para greedy miope típico — error mediano y de los pools competitivos son moderados.
-- **Para una garantía teórica:** problema. Una prueba de submodularidad adaptativa necesita control **uniforme** sobre $t$, y el peor caso *crece* con el número de tests. Promedio bajo ≠ garantía.""")
+- **Para una garantía teórica:** problema. Una consulta de submodularidad adaptativa necesita control **uniforme** sobre $t$, y el peor caso *crece* con el número de tests. Promedio bajo ≠ garantía.""")
 
 
 # ---------------------------------------------------------------------
@@ -522,7 +522,7 @@ $W$ tiene $2^{|S|}$ candidatos $T$; enumerarlos todos es caro. Probamos **6 heur
 - `self`: $(\sum u_T)\cdot\prod(1-\tilde p_T)$ — el valor del pool $T$ solo.
 - `prob`: $\prod(1-\tilde p_T)$.
 - `util`: $\sum u_T$.
-- `ent_λ`: `self` $+\,\lambda\cdot H(r_T)$ — versión "informativa": le suma a `self` la entropía del conteo de $T$, con la idea de que un $T$ con $H(r_T)$ alta es más informativo cuando se prueba. (Es la *segunda* aparición de entropía: ahora como ingrediente de heurística, no como medidor.) Spoiler: empíricamente no le gana a `partner`.
+- `ent_λ`: `self` $+\,\lambda\cdot H(r_T)$ — versión "informativa": le suma a `self` la entropía del conteo de $T$, con la idea de que un $T$ con $H(r_T)$ alta es más informativo cuando se consulta. (Es la *segunda* aparición de entropía: ahora como ingrediente de heurística, no como medidor.) Spoiler: empíricamente no le gana a `partner`.
 - `partner`: $(\sum u_T + u^*)\cdot\prod(1-\tilde p_T)\cdot p^*$ — tiene en cuenta el mejor "partner" en $V$ que cabría en el presupuesto restante.
 - `random`: baseline.""")
 code("""\
@@ -610,7 +610,7 @@ md(r"""## 10. Conclusiones
 | VW-A ($\prod(1-\tilde p)$) reproduce el greedy miope **exacto**. | VW escalar es una *re-formulación*, no un algoritmo nuevo. |
 | Un escalar no captura el **count PMF** (Defecto 1). | Pasos futuros tratan distinto a $T$'s con misma all-clear pero distinta info. |
 | **Lookahead gap** crece con $B$ (0.14 → 1.96). | Greedy miope (= VW escalar) deja utilidad en la mesa. |
-| **Joint vs marginales** (Marmolejo): mediana ~0.07, 70% con error < 0.10. Pero el **máximo** crece con el número de tests positivos observados. | La heurística marginal es razonable en uso operativo (greedy miope) pero el peor caso no está acotado uniformemente. |
+| **Joint vs marginales** (Marmolejo): mediana ~0.07, 70% con error < 0.10. Pero el **máximo** crece con el número de tests conteo-no-ceros observados. | La heurística marginal es razonable en uso operativo (greedy miope) pero el peor caso no está acotado uniformemente. |
 | `partner` heuristic comprime $\|W\|=2^{\|S\|}$ a $L_{\min}\approx 1$–3 en *todos* los regímenes. | Hace tractable la enumeración de super-nodos en la práctica. |
 
 **Lo que queda abierto:** demostrar (o refutar) submodularidad adaptativa de $g_h(T,U)$ con observación de conteo. Eso es lo que decidiría si VW + `partner` da una garantía global $(1 - e^{-\alpha})$.""")

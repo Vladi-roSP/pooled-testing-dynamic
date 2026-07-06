@@ -2,7 +2,7 @@
 Baseline benchmarks from Section 2.1.
 
 U_max    — upper bound: sum of u_i * q_i (infinite budget).
-U_single — optimal strategy testing one individual per test.
+U_single — optimal strategy counting one individual per test.
 """
 
 

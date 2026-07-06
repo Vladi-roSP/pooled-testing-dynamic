@@ -19,7 +19,7 @@ def _u(s):
     return html.unescape(s or "")
 
 
-PORTADA = r"""# Compendio de ejemplos — Dynamic Augmented Pooled Testing
+PORTADA = r"""# Compendio de ejemplos — Dynamic Augmented Adaptive Group Counting
 
 Un ejemplo clave de cada notebook del proyecto, contado con su figura y un par de
 frases. La grafica manda; el texto solo la enmarca. Todo sale de correr el codigo
@@ -32,7 +32,7 @@ _d = os.path.abspath(os.getcwd())
 while _d != os.path.dirname(_d) and not os.path.isfile(os.path.join(_d, "augmented", "__init__.py")):
     _d = os.path.dirname(_d)
 if not os.path.isfile(os.path.join(_d, "augmented", "__init__.py")):
-    _fb = "/Users/hectorbecerrilvillamil/Desktop/PooledTesting/pooled-testing-dynamic"
+    _fb = "/Users/hectorbecerrilvillamil/Desktop/GroupCounting/group-count-dynamic"
     if os.path.isfile(os.path.join(_fb, "augmented", "__init__.py")):
         _d = _fb
 if _d not in sys.path:

@@ -96,9 +96,9 @@ test, y además deja mejor preparado el segundo. El miope es demasiado cauteloso
 limpia de a uno.""")
 
 # ===================================================================
-md(r"""## 2. El trazo cuando NADIE está infectado
+md(r"""## 2. El trazo cuando NADIE está activo
 
-El caso más claro. Si nadie está infectado, todo pool sale limpio (r=0). Veamos qué
+El caso más claro. Si nadie está activo, todo pool sale limpio (r=0). Veamos qué
 limpia cada algoritmo en sus dos tests.""")
 
 code(r"""def traza(nombre, z):
@@ -112,7 +112,7 @@ code(r"""def traza(nombre, z):
     return filas, util
 
 def mostrar(z):
-    print(f'Perfil real z: infectados = {indices_from_mask(z,n) or "(nadie)"}\n')
+    print(f'Perfil real z: activos = {indices_from_mask(z,n) or "(nadie)"}\n')
     for nombre in runners:
         filas, util = traza(nombre, z)
         print(f'{nombre}  ->  utilidad final = {util:.0f}')
@@ -121,7 +121,7 @@ def mostrar(z):
             print(f'   {k:>4} {pl:>8} {r:>3} {lim:>7} {cu:>9.0f}')
         print()
 
-mostrar(0)   # z=0: nadie infectado""")
+mostrar(0)   # z=0: nadie activo""")
 
 md(r"""Aquí se ve el comportamiento. El óptimo agrupa para limpiar a 1 y 2 juntos en el
 primer test y luego cosecha otra persona de valor 3: termina en 8. El miope limpia
@@ -130,17 +130,17 @@ a la persona 2**: termina en 6. La cautela del miope le cuesta 2 de utilidad en 
 realización.""")
 
 # ===================================================================
-md(r"""## 3. El trazo cuando alguien SÍ está infectado
+md(r"""## 3. El trazo cuando alguien SÍ está activo
 
-Para ver cómo reaccionan, tomamos una realización con un infectado y la trazamos
+Para ver cómo reaccionan, tomamos una realización con un activo y la trazamos
 igual.""")
 
-code(r"""# elegimos un z con un infectado donde el resultado sea ilustrativo
+code(r"""# elegimos un z con un activo donde el resultado sea ilustrativo
 from augmented.core import mask_from_indices
-z_inf = mask_from_indices([3])   # la persona 3 (alto riesgo, alto valor) infectada
+z_inf = mask_from_indices([3])   # la persona 3 (alto riesgo, alto valor) activa
 mostrar(z_inf)""")
 
-md(r"""Cuando el pool del óptimo toca a un infectado, el test ya no sale limpio (r>0) y
+md(r"""Cuando el pool del óptimo toca a un activo, el test ya no sale limpio (r>0) y
 nadie de ese pool se cobra; cada algoritmo reacomoda según su creencia actualizada.
 El conteo, además, usa el valor exacto de r para afinar el posterior de cara al
 segundo test.""")
@@ -149,7 +149,7 @@ segundo test.""")
 md(r"""## 4. El veredicto: utilidad esperada sobre TODAS las realizaciones
 
 Un perfil suelto ilustra, pero la comparación justa promedia sobre los $2^n$
-escenarios de infección, pesados por su probabilidad. Esa es la utilidad esperada
+escenarios de estado latente, pesados por su probabilidad. Esa es la utilidad esperada
 de cada algoritmo.""")
 
 code(r"""def eu(nombre):
@@ -199,7 +199,7 @@ Eso conecta con el otro hallazgo: a $B=3$ el lookahead de un paso ya **no** cier
 todo el hueco, solo ~40%, porque deja dos pasos futuros jugados de forma miope.
 Anticipar un paso basta cuando el horizonte es uno; con horizontes más largos hay que
 anticipar más. La intuición que queda: la miopía no es "ser tonto", es "ser
-impaciente", y cuánto cuesta esa impaciencia depende de cuánto futuro estás
+imagente", y cuánto cuesta esa impaciencia depende de cuánto futuro estás
 desperdiciando.""")
 
 nbf.write(nb, OUT)

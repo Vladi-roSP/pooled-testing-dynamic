@@ -11,15 +11,24 @@ History = tuple  # e.g. ((pool1, r1), (pool2, r2), ...)
 
 
 class DAPTS:
-    """Dynamic Augmented Pooled Testing Strategy.
+    """Dynamic Augmented Adaptive Group Counting Strategy.
 
     policy[k] maps a History of length k to the pool chosen at step k+1.
     So policy[0] maps () -> pool for the first test, etc.
+
+    cap is the truncation quantizer the policy was solved under (see
+    core.bin_of): the outcomes recorded in each history key are binned
+    counts min(r, cap), not raw counts. cap=None means full counts, so the
+    binned outcome equals the raw count and any consumer keyed on raw counts
+    stays correct. For cap<G the outcomes are coarsened, so replayers must
+    bin the observed count through the same quantizer before looking a
+    history up.
     """
 
-    def __init__(self, B, policy=None):
+    def __init__(self, B, policy=None, cap=None):
         self.B = B
         self.policy = policy if policy is not None else [{} for _ in range(B)]
+        self.cap = cap
 
     def choose(self, k, history):
         """Pool mask for step k (1-indexed) given history of length k-1."""

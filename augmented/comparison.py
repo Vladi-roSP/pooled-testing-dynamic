@@ -74,7 +74,7 @@ def print_comparison(p, u, B, G, label=""):
     print()
     print(f"  {'U^greedy  (myopic augmented greedy)':42s} = {results['U_greedy']:.6f}")
     print(f"  {'U^greedy_counting  (full-history Bayes)':42s} = {results['U_greedy_counting']:.6f}")
-    print(f"  {'U^greedy_gibbs  (Gibbs sampling MCMC)':42s} = {results['U_greedy_gibbs']:.6f}")
+    print(f"  {'U^greedy_gibbs  (Gibbs drawing MCMC)':42s} = {results['U_greedy_gibbs']:.6f}")
     print(f"  {'U^greedy_mosek  (Mosek pool selector)':42s} = {results['U_greedy_mosek']:.6f}")
     print(f"  {'U^greedy_gurobi (Gurobi pool selector)':42s} = {results['U_greedy_gurobi']:.6f}")
 
@@ -104,15 +104,15 @@ def main():
         p=[0.05, 0.10, 0.15, 0.20, 0.08],
         u=[4.0,  6.0,  3.0,  5.0,  7.0],
         B=2, G=3,
-        label="Instance 1: n=5, B=2, G=3 (low infection rates)"
+        label="Instance 1: n=5, B=2, G=3 (low latent-state rates)"
     )
 
-    # --- Instance 2: higher infection rates ---
+    # --- Instance 2: higher latent-state rates ---
     print_comparison(
         p=[0.30, 0.40, 0.35, 0.25],
         u=[5.0,  3.0,  4.0,  6.0],
         B=2, G=2,
-        label="Instance 2: n=4, B=2, G=2 (high infection rates)"
+        label="Instance 2: n=4, B=2, G=2 (high latent-state rates)"
     )
 
     # --- Instance 3: very small ---

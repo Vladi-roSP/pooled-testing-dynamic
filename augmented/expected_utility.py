@@ -9,7 +9,7 @@ from augmented.simulator import apply_dapts
 
 
 def exact_expected_utility(F, p, u, n):
-    """u(F) by summing over all 2^n infection profiles. Feasible for n <= ~20."""
+    """u(F) by summing over all 2^n latent-state profiles. Feasible for n <= ~20."""
     q = [1.0 - pi for pi in p]
     total = 0.0
     for z_mask in range(1 << n):
@@ -23,7 +23,7 @@ def exact_expected_utility(F, p, u, n):
 
 
 def mc_expected_utility(F, p, u, n, trials=10_000, seed=42):
-    """Estimate u(F) via Monte Carlo sampling."""
+    """Estimate u(F) via Monte Carlo drawing."""
     rng = random.Random(seed)
     total = 0.0
     for _ in range(trials):

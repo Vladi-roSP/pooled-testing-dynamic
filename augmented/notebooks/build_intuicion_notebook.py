@@ -62,7 +62,7 @@ md(r"""## 1. La regla, en un ejemplo chico
 Antes del caso grande, la tensión en miniatura. Entre dos pools candidatos, el
 greedy no elige solo por utilidad ni solo por seguridad, sino por el producto.""")
 
-code(r"""# Cuatro personas con (prob de infección, utilidad)
+code(r"""# Cuatro personas con (prob de estado latente, utilidad)
 p_demo = [0.02, 0.30, 0.05, 0.04]
 u_demo = [1.0,  3.0,  2.0,  2.0]
 cands = [[0,2,3], [1,2,3], [0,2], [1]]
@@ -78,7 +78,7 @@ print("prefiere el pool de gente segura aunque su utilidad sea algo menor.")""")
 md(r"""## 2. El greedy en vivo sobre una instancia grande (n=40)
 
 Generamos 40 personas con riesgos bajos-moderados y utilidades en {1,2,3},
-sorteamos quién está infectado de verdad, y corremos el greedy con presupuesto
+sorteamos quién está activo de verdad, y corremos el greedy con presupuesto
 B=12 y pools de hasta G=5. Trazamos cada test: qué pool eligió, el conteo
 observado, y a quién limpió.""")
 
@@ -90,12 +90,12 @@ z_mask = 0
 for i in range(n):
     if rng.random() < p[i]:
         z_mask |= (1 << i)
-print(f"n={n}, B={B}, G={G} | infectados reales: {bin(z_mask).count('1')} de {n}")
+print(f"n={n}, B={B}, G={G} | activos reales: {bin(z_mask).count('1')} de {n}")
 
 def trace_greedy(p, u, B, G, z_mask):
     n = len(p)
     cur = list(p); cleared = set(); cleared_mask = 0
-    status = np.zeros((n, B + 1), dtype=int)        # 0=incierto,1=limpio,2=deducido infectado
+    status = np.zeros((n, B + 1), dtype=int)        # 0=incierto,1=limpio,2=deducido activo
     steps = []
     for b in range(B):
         pool = _myopic_best_pool(cur, u, G, n, cleared_mask)
@@ -118,7 +118,7 @@ def trace_greedy(p, u, B, G, z_mask):
 steps, status, cleared = trace_greedy(p, u, B, G, z_mask)
 for s in steps[:6]:
     miembros = ', '.join(f'{i}(p={p[i]:.02f},u={int(u[i])})' for i in s['pool'])
-    res = 'LIMPIO' if s['r'] == 0 else f"r={s['r']} (positivo)"
+    res = 'LIMPIO' if s['r'] == 0 else f"r={s['r']} (conteo-no-cero)"
     print(f"test {s['b']:>2}: pool [{miembros}] -> {res}"
           f"{'  limpia ' + str(s['newly']) if s['newly'] else ''}")
 print(f"\\n... tras {len(steps)} tests: {len(cleared)} personas limpias, "
@@ -129,7 +129,7 @@ md(r"""## 3. Visualización 1 — el mapa de limpieza
 
 Cada fila es una persona (ordenadas por riesgo prior, de menor a mayor hacia
 arriba); cada columna es un test. Verde = ya limpia, gris = incierta, rojo =
-deducida infectada. Se ve el patrón central: **el greedy limpia primero a la gente
+deducida activa. Se ve el patrón central: **el greedy limpia primero a la gente
 de bajo riesgo** (las filas de abajo se ponen verdes temprano) y va subiendo hacia
 los riesgos altos solo si el presupuesto alcanza.""")
 
@@ -144,7 +144,7 @@ ax.set_title('Mapa de limpieza: el greedy limpia primero a los de bajo riesgo')
 from matplotlib.patches import Patch
 ax.legend(handles=[Patch(color='0.85', label='incierta'),
                    Patch(color='tab:green', label='limpia'),
-                   Patch(color='tab:red', label='deducida infectada')],
+                   Patch(color='tab:red', label='deducida activa')],
           loc='upper left', bbox_to_anchor=(1.01, 1))
 plt.tight_layout(); plt.show()""")
 
@@ -154,7 +154,7 @@ md(r"""## 4. Visualización 2 — la curva de ganancia
 La utilidad cobrada acumulada contra el número de tests. Sube rápido al principio
 —los primeros pools, sobre gente segura, casi siempre salen limpios y cobran
 mucho— y se aplana después, cuando solo quedan personas de mayor riesgo y los pools
-empiezan a salir positivos. Es la firma de una heurística miope: cosecha lo fácil
+empiezan a salir conteo-no-ceros. Es la firma de una heurística miope: cosecha lo fácil
 primero.""")
 
 code(r"""xs = [0] + [s['b'] for s in steps]
@@ -166,9 +166,9 @@ for s in steps:
     if s['r'] != 0:
         ax.axvline(s['b'] - 0.5, color='tab:red', alpha=0.25, lw=1)
 ax.set_xlabel('test'); ax.set_ylabel('utilidad cobrada acumulada')
-ax.set_title('Curva de ganancia (líneas rojas = tests que salieron positivos)')
+ax.set_title('Curva de ganancia (líneas rojas = tests que salieron conteo-no-ceros)')
 plt.tight_layout(); plt.show()
-print('Rendimiento decreciente: los tests positivos (rojo) aparecen más tarde,')
+print('Rendimiento decreciente: los tests conteo-no-ceros (rojo) aparecen más tarde,')
 print('cuando ya solo queda gente de mayor riesgo.')""")
 
 # ===================================================================

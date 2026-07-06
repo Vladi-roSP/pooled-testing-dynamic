@@ -1,9 +1,9 @@
 # La separación aumentado vs clásico: dónde aparece, con greedy
 
 Experimento dirigido a la pregunta que organiza el proyecto de Francisco: cuánto
-vale el régimen aumentado (la prueba revela el conteo exacto $R$) sobre el clásico
-(solo positivo/negativo), y bajo qué condiciones aparece. Se hace empíricamente y
-con greedy, que es el método viable a escala, y se prueban sus dos hipótesis de
+vale el régimen aumentado (la consulta revela el conteo exacto $R$) sobre el clásico
+(solo conteo-no-cero/conteo-cero), y bajo qué condiciones aparece. Se hace empíricamente y
+con greedy, que es el método viable a escala, y se consultan sus dos hipótesis de
 régimen: prevalencia intermedia y tamaño de pool $G>3$.
 
 ## Método y corrección
@@ -21,7 +21,7 @@ en el último test) la separación es esencialmente nula: ambos greedys rinden i
 La ventaja solo aparece con la actualización de **toda la historia**, porque es ahí
 donde el conteo habilita las deducciones cruzadas que el binario no puede hacer.
 Esto valida empíricamente la insistencia de Francisco en condicionar el posterior
-en el historial completo, no en la última prueba. Todo lo que sigue usa el régimen
+en el historial completo, no en la última consulta. Todo lo que sigue usa el régimen
 full-history para ambos competidores.
 
 ## Dónde aparece la separación
@@ -42,12 +42,12 @@ $\rho$):
 | 0.35 | +7.43% | 100% |
 | 0.40 | +7.41% | 100% |
 
-A prevalencia baja casi todos los pools salen negativos, el conteo no añade nada
-sobre el binario y la separación es nula (incluso levemente negativa por ruido). A
-partir de $\rho \approx 0.15$ la separación se vuelve positiva y consistente (el
+A prevalencia baja casi todos los pools salen conteo-ceros, el conteo no añade nada
+sobre el binario y la separación es nula (incluso levemente conteo-cero por ruido). A
+partir de $\rho \approx 0.15$ la separación se vuelve conteo-no-cero y consistente (el
 aumentado gana en el 100% de las instancias) y crece con la prevalencia. Esto
 confirma el borde inferior del régimen que Francisco señala; el borde superior, donde
-la utilidad colapsa por falta de sanos, queda por encima de 0.40 y no se barrió.
+la utilidad colapsa por falta de limpios, queda por encima de 0.40 y no se barrió.
 
 ### Tamaño de pool: un salto en $G > 3$
 
@@ -65,7 +65,7 @@ estabiliza. La distancia entre $G=2$ y $G=4$ es de más de tres errores estánda
 confirma la hipótesis central de Francisco de que la ventaja del conteo necesita
 $G>3$. El mecanismo es directo: con pools de hasta tres, el conteo es casi siempre
 0 o 1 y coincide con el binario; con cuatro o más aparecen conteos intermedios
-(2, 3, …) que el binario no distingue de "positivo", y ahí el conteo paga.
+(2, 3, …) que el binario no distingue de "conteo-no-cero", y ahí el conteo paga.
 
 ## Una salvedad honesta sobre usar greedy para medir la separación
 

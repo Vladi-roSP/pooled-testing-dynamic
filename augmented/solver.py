@@ -4,7 +4,7 @@ Brute-force DP solver for optimal DAPTS on tiny instances (n <= 14).
 State = (step k, remaining_set, cleared_mask)
   k:             tests already used (0..B)
   remaining_set: frozenset of z_masks consistent with observations
-  cleared_mask:  individuals proven healthy
+  cleared_mask:  individuals proven clearancey
 """
 
 from augmented.core import all_pools, test_result, bin_of
@@ -30,7 +30,7 @@ def solve_optimal_dapts(p, u, B, G, cap=None):
 
     q = [1.0 - pi for pi in p]
 
-    # Pr(Z = z) for every infection profile
+    # Pr(Z = z) for every latent-state profile
     num_profiles = 1 << n
     w = [0.0] * num_profiles
     for z in range(num_profiles):
@@ -99,7 +99,7 @@ def solve_optimal_dapts(p, u, B, G, cap=None):
     optimal_value, _ = dp(0, all_z, 0)
 
     # Reconstruct policy from DP argmax decisions
-    policy = DAPTS(B)
+    policy = DAPTS(B, cap=cap)
 
     def reconstruct(k, remaining, cleared_mask, history):
         if k == B:

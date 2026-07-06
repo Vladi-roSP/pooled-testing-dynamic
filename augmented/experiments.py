@@ -1,10 +1,10 @@
 """
-Random instance exploration for augmented pooled testing.
+Random instance exploration for augmented adaptive group counting.
 
 Generates random problem instances and compares all strategies,
-with a focus on how augmented testing performance varies with
-infection rates (Francisco's hypothesis: augmented testing gains
-increase at higher infection rates).
+with a focus on how augmented counting performance varies with
+latent-state rates (Francisco's hypothesis: augmented counting gains
+increase at higher latent-state rates).
 
 Usage:  python augmented/experiments.py
 """
@@ -37,7 +37,7 @@ def random_instance(n, B, G, p_range=(0.01, 0.50), u_range=(1.0, 10.0),
     G : int
         Max pool size.
     p_range : tuple
-        (min, max) for infection probabilities.
+        (min, max) for latent-state probabilities.
     u_range : tuple
         (min, max) for individual utilities.
     seed : int or None
@@ -94,7 +94,7 @@ def run_experiment(n_instances=50, n=5, B=2, G=3,
     Parameters
     ----------
     n_instances : int
-        Number of random instances per infection-rate regime.
+        Number of random instances per latent_state-rate regime.
     n : int
         Population size.
     B : int
@@ -102,7 +102,7 @@ def run_experiment(n_instances=50, n=5, B=2, G=3,
     G : int
         Max pool size.
     p_ranges : list of (float, float) or None
-        Infection probability ranges to test.
+        LatentState probability ranges to test.
         Default: low (0.01-0.10), medium (0.10-0.30), high (0.30-0.60).
     u_range : tuple
         Utility range.
@@ -140,7 +140,7 @@ def summarize_results(all_results):
     """Print summary statistics for experiment results.
 
     Shows mean, std, and relative performance of each strategy,
-    with focus on augmented benefit at different infection rates.
+    with focus on augmented benefit at different latent-state rates.
     """
     print(f"\n{'='*70}")
     print("  EXPERIMENT SUMMARY")
@@ -215,7 +215,7 @@ def summarize_results(all_results):
 
 
 def find_best_instances(all_results, metric='augmented_benefit', top_k=5):
-    """Find the instances where augmented testing helps the most.
+    """Find the instances where augmented counting helps the most.
 
     Parameters
     ----------

@@ -88,7 +88,7 @@ primera fue un Gibbs de sitio único adaptado de Lopez et al. (commit 47e855a), 
 ergódico. La segunda intentó arreglar la mezcla con movimientos de intercambio
 (swap, 44f7e5f), insuficientes porque conservan el conteo total. La tercera fue un
 parche provisional de validez (7ccad73, 2026-06-03): subió el umbral exacto, sembró
-un estado consistente y añadió un guard para contar solo muestras válidas; cerró la
+un estado consistente y añadió un guard para contar solo registros válidas; cerró la
 validez pero no la ergodicidad. La cuarta es la reescritura actual (547b324):
 componentes conexas + exacto por componente + Metropolis de camino alternante. El
 detalle está en `correcciones_gibbs.md`.

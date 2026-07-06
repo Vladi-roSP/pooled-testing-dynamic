@@ -33,7 +33,7 @@ def _print_worked_example():
     n = 4
     p = [0.5, 0.5, 0.5, 0.5]
     tprime = mask_from_indices([0, 1])
-    history = ((tprime, 1),)   # t' returns "1 infected among {0,1}"
+    history = ((tprime, 1),)   # t' returns "1 active among {0,1}"
     t = mask_from_indices([0, 1, 2, 3])
 
     exact = exact_pool_pmf(p, history, t, n)
@@ -101,7 +101,7 @@ def _plot_endpoints(rows, path):
     axes[0].plot([0, 1], [0, 1], 'k--', lw=1)
     axes[0].set_xlabel("exact P(r=0 | H)")
     axes[0].set_ylabel("heuristic ∏(1 - tilde p_i)")
-    axes[0].set_title("All-healthy endpoint")
+    axes[0].set_title("All-clearancey endpoint")
     axes[0].set_xlim(0, 1)
     axes[0].set_ylim(0, 1)
 
@@ -111,7 +111,7 @@ def _plot_endpoints(rows, path):
     axes[1].plot([0, 1], [0, 1], 'k--', lw=1)
     axes[1].set_xlabel("exact P(r=|t| | H)")
     axes[1].set_ylabel("heuristic ∏ tilde p_i")
-    axes[1].set_title("All-infected endpoint")
+    axes[1].set_title("All-active endpoint")
     axes[1].set_xlim(0, 1)
     axes[1].set_ylim(0, 1)
 

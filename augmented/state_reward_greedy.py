@@ -1,7 +1,7 @@
 """
-Greedy pooled testing with an information-reward meta-parameter beta.
+Greedy adaptive group counting with an information-reward meta-parameter beta.
 
-Run with: python augmented/infection_reward_greedy.py
+Run with: python augmented/state_reward_greedy.py
 """
 
 import itertools
@@ -72,7 +72,7 @@ def _candidate_pools(p, u, G, n, cleared_mask, beta, info_metric):
     return active_mask, pools
 
 
-def _sample_z_mask_from_prior(rng, p):
+def _draw_z_mask_from_prior(rng, p):
     z_mask = 0
     for i, pi in enumerate(p):
         if rng.random() < pi:
@@ -155,7 +155,7 @@ def _beta_best_pool(p, u, G, n, cleared_mask, beta, info_metric):
 
 
 def greedy_myopic_beta_simulate(p, u, B, G, z_mask, beta, info_metric='entropy'):
-    """Simulate myopic beta-reward greedy on a fixed infection profile."""
+    """Simulate myopic beta-reward greedy on a fixed latent-state profile."""
     n = len(p)
     current_p = list(p)
     cleared_mask = 0
@@ -184,7 +184,7 @@ def greedy_myopic_beta_expected_utility(p, u, B, G, beta, info_metric='entropy')
         rng = np.random.default_rng(0)
         total = 0.0
         for _ in range(_LARGE_N_MC_TRIALS):
-            z_mask = _sample_z_mask_from_prior(rng, p)
+            z_mask = _draw_z_mask_from_prior(rng, p)
             _, _, utility = greedy_myopic_beta_simulate(
                 p, u, B, G, z_mask, beta, info_metric)
             total += utility
@@ -266,7 +266,7 @@ def run_vip_benchmark(beta_values=None, info_metric='confirmed', seed=42):
         print()
 
 
-def _sample_vip_instance(seed):
+def _draw_vip_instance(seed):
     rng = np.random.default_rng(seed)
     p_vip = np.clip(0.8 + rng.uniform(-0.05, 0.05, size=8), 0.05, 0.95).tolist()
     p_reg = np.clip(0.2 + rng.uniform(-0.05, 0.05, size=12), 0.05, 0.95).tolist()
@@ -275,7 +275,7 @@ def _sample_vip_instance(seed):
     return p_vip + p_reg, u_vip + u_reg, 6, 10
 
 
-def _sample_uniform_instance(seed):
+def _draw_uniform_instance(seed):
     rng = np.random.default_rng(seed)
     p = rng.uniform(0.1, 0.4, size=15).tolist()
     u = [1.0] * 15
@@ -286,8 +286,8 @@ def run_beta_sweep(n_instances=30, seed=0):
     """Run a randomized beta sweep for VIP and uniform scenarios."""
     beta_values = [0.0, 0.5, 1.0, 2.0, 5.0]
     scenarios = [
-        ("VIP", _sample_vip_instance),
-        ("uniform", _sample_uniform_instance),
+        ("VIP", _draw_vip_instance),
+        ("uniform", _draw_uniform_instance),
     ]
 
     print("beta sweep")

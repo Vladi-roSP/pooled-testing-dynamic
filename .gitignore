@@ -70,8 +70,12 @@ augmented/notebooks/*_raw.json
 # (Los PDFs de notebooks ya trackeados no se ven afectados por esta regla.)
 *.pdf
 
-# Obsidian: el vault vive FUERA del repo (../Vault-PooledTesting). Estas reglas
+# Obsidian: el vault vive FUERA del repo (../Vault-GroupCounting). Estas reglas
 # son defensivas por si se moviera dentro.
 .obsidian/
-Vault-PooledTesting/
+Vault-GroupCounting/
 *.obsidian-vault/
+
+# graphify: grafo de conocimiento auto-generado (vault + HTML + JSON). Regenerable
+# con /graphify; no se versiona.
+graphify-out/

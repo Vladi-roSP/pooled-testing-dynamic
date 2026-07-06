@@ -6,7 +6,7 @@ updates and myopic-greedy pool selection) -- there is NO MOSEK / conic-solver
 dependency, unlike the original ``classical/rl_training`` code.
 
   DaptsExactEnv   Exact belief-state MDP for SMALL n. The observation is the
-                  full posterior over the 2**n infection profiles, so a trained
+                  full posterior over the 2**n latent-state profiles, so a trained
                   policy can in principle match the DP optimum
                   (augmented.solver.solve_optimal_dapts). Use it to VALIDATE
                   that RL recovers the optimum.
@@ -15,14 +15,14 @@ dependency, unlike the original ``classical/rl_training`` code.
                   exact DP). It is a port of
                   ``classical/rl_training/PPO_bucket_gymnasium_B*.py``: the
                   observation is a fixed-size histogram of agents by
-                  (health bucket, utility bucket). The RL agent chooses the
+                  (clearance bucket, utility bucket). The RL agent chooses the
                   FIRST pool; the remaining B-1 tests are played by augmented
                   myopic greedy.
 
 Reproducibility
 ---------------
 Every stochastic choice goes through the env's gymnasium ``np_random``, seeded
-via ``reset(seed=...)``. Instance samplers receive that same Generator, so a
+via ``reset(seed=...)``. Instance generators receive that same Generator, so a
 fixed seed fully determines an episode (instance, true profile, shuffles).
 """
 
@@ -51,8 +51,8 @@ def prior_profile_weights(p):
     return w
 
 
-def sample_profile(p, rng):
-    """Sample a true infection profile z (bitmask) from independent prior p."""
+def draw_profile(p, rng):
+    """Draw a true latent-state profile z (bitmask) from independent prior p."""
     z = 0
     for i in range(len(p)):
         if rng.random() < p[i]:
@@ -74,8 +74,8 @@ class DaptsExactEnv(gym.Env):
 
     Parameters
     ----------
-    instance_sampler : callable
-        ``instance_sampler(rng) -> (p, u)`` where p, u are length-n sequences.
+    instance_generator : callable
+        ``instance_generator(rng) -> (p, u)`` where p, u are length-n sequences.
         For a fixed instance, return the same (p, u) ignoring rng.
     B, G, n : int
         Budget (tests), pool size, population size.
@@ -85,13 +85,13 @@ class DaptsExactEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, instance_sampler, B, G, n, max_n=10):
+    def __init__(self, instance_generator, B, G, n, max_n=10):
         super().__init__()
         if n > max_n:
             raise ValueError(
                 f"DaptsExactEnv is for small n (got n={n} > max_n={max_n}); "
                 "use DaptsBucketEnv to scale.")
-        self.instance_sampler = instance_sampler
+        self.instance_generator = instance_generator
         self.B, self.G, self.n = B, G, n
         self.num_profiles = 1 << n
         self.pools = all_pools(n, G, include_empty=False)
@@ -109,11 +109,11 @@ class DaptsExactEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        p, u = self.instance_sampler(self.np_random)
+        p, u = self.instance_generator(self.np_random)
         self.p, self.u = list(p), list(u)
         if len(self.p) != self.n:
             raise ValueError(
-                f"instance_sampler produced n={len(self.p)}, env expects {self.n}")
+                f"instance_generator produced n={len(self.p)}, env expects {self.n}")
 
         self._belief = prior_profile_weights(self.p)
         # The true profile may be forced (used by the exact evaluator).
@@ -170,36 +170,36 @@ class DaptsBucketEnv(gym.Env):
     conic/MOSEK machinery replaced by augmented myopic greedy:
 
       * Observation: histogram of the N agents over
-        (health bucket x utility bucket), plus the running utility sum and
-        health product of the agents picked so far. Fixed size -> scales in N.
-      * Action: pick an agent from a (health, utility) category, or STOP.
+        (clearance bucket x utility bucket), plus the running utility sum and
+        clearance product of the agents picked so far. Fixed size -> scales in N.
+      * Action: pick an agent from a (clearance, utility) category, or STOP.
         The RL agent assembles the FIRST pool (up to G agents).
-      * Reward: a true profile z is sampled; test 1 is the RL pool; tests
+      * Reward: a true profile z is drawn; test 1 is the RL pool; tests
         2..B are played by augmented myopic greedy. Reward = utility of all
-        individuals proven healthy.
+        individuals proven clearancey.
 
     Parameters
     ----------
-    instance_sampler : callable
-        ``instance_sampler(rng) -> (p, u)`` with length-N sequences;
-        p[i] = infection probability, u[i] = utility.
+    instance_generator : callable
+        ``instance_generator(rng) -> (p, u)`` with length-N sequences;
+        p[i] = latent-state probability, u[i] = utility.
     B, G, N : int
         Budget, pool size, population size.
-    health_bins, utility_bins : int
-        Discretisation of the (health, utility) observation.
+    clearance_bins, utility_bins : int
+        Discretisation of the (clearance, utility) observation.
     """
 
     metadata = {"render_modes": []}
 
-    def __init__(self, instance_sampler, B, G, N,
-                 health_bins=4, utility_bins=3, utility_high=3.0):
+    def __init__(self, instance_generator, B, G, N,
+                 clearance_bins=4, utility_bins=3, utility_high=3.0):
         super().__init__()
-        self.instance_sampler = instance_sampler
+        self.instance_generator = instance_generator
         self.B, self.G, self.N = B, G, N
-        self.health_bins = health_bins
+        self.clearance_bins = clearance_bins
         self.utility_bins = utility_bins
         self.utility_high = float(utility_high)
-        self.num_categories = health_bins * utility_bins
+        self.num_categories = clearance_bins * utility_bins
 
         # Per-dimension bounds: the first num_categories entries are agent counts
         # (<= N); the last two are usum (sum of selected utilities, which can
@@ -214,9 +214,9 @@ class DaptsBucketEnv(gym.Env):
             shape=(self.num_categories + 2,), dtype=np.float32)
         self.action_space = spaces.Discrete(self.num_categories + 1)
 
-        self.health_bin_edges = np.linspace(0.0, 1.0, health_bins + 1)
+        self.clearance_bin_edges = np.linspace(0.0, 1.0, clearance_bins + 1)
         # Full edges of a uniform partition of [0, utility_high] into exactly
-        # utility_bins bins (same convention as health_bin_edges, consumed by
+        # utility_bins bins (same convention as clearance_bin_edges, consumed by
         # _category via digitize-1). Honors the utility_bins arg instead of the
         # old hardcoded [0,2,3] that silently fixed it at 3 bins over {1,2,3}.
         self.utility_bin_edges = np.linspace(0.0, self.utility_high,
@@ -229,23 +229,23 @@ class DaptsBucketEnv(gym.Env):
         self.attempts = 0
         self.last_z = 0          # true profile of the most recent episode
 
-    def _category(self, health, utility):
+    def _category(self, clearance, utility):
         ub = int(np.digitize(utility, self.utility_bin_edges) - 1)
         ub = min(max(ub, 0), self.utility_bins - 1)
-        hb = int(np.digitize(health, self.health_bin_edges) - 1)
-        hb = min(max(hb, 0), self.health_bins - 1)
-        return ub * self.health_bins + hb
+        hb = int(np.digitize(clearance, self.clearance_bin_edges) - 1)
+        hb = min(max(hb, 0), self.clearance_bins - 1)
+        return ub * self.clearance_bins + hb
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        p, u = self.instance_sampler(self.np_random)
+        p, u = self.instance_generator(self.np_random)
         self.p = np.asarray(p, dtype=np.float64)
         self.u = np.asarray(u, dtype=np.float64)
 
         self.category_agents = {c: [] for c in range(self.num_categories)}
-        health = 1.0 - self.p
+        clearance = 1.0 - self.p
         for i in range(self.N):
-            cat = self._category(health[i], self.u[i])
+            cat = self._category(clearance[i], self.u[i])
             self.category_agents[cat].append(i)
         for c in self.category_agents:
             self.np_random.shuffle(self.category_agents[c])
@@ -284,8 +284,8 @@ class DaptsBucketEnv(gym.Env):
         return self._obs(), reward, done, False, {}
 
     def _rollout_reward(self):
-        """Sample z, play test 1 = RL pool, tests 2..B = augmented greedy."""
-        z = sample_profile(self.p, self.np_random)
+        """Draw z, play test 1 = RL pool, tests 2..B = augmented greedy."""
+        z = draw_profile(self.p, self.np_random)
         self.last_z = z
         rl_pool = mask_from_indices(self.selected) if self.selected else 0
 

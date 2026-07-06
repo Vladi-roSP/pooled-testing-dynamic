@@ -30,7 +30,7 @@ def _prior_weight(p, q, z, n):
 
 
 def _true_policy_eu(simulate, p, u, B, G):
-    """Exact E[utility] of a simulate-based policy: sum over all 2^n infection
+    """Exact E[utility] of a simulate-based policy: sum over all 2^n latent_state
     profiles z of Pr(z) * utility(simulate on z). This is the *definition* of
     the policy's expected utility and the ground truth any closed-form EU must
     reproduce."""
@@ -180,20 +180,20 @@ def test_counting_raises_on_infeasible_history():
 def test_counting_feasible_history_still_works():
     from augmented.bayesian import bayesian_update_by_counting
     p = [0.3, 0.4, 0.5]
-    history = ((mask_from_indices([0, 1]), 1),)  # exactly one of {0,1} infected
+    history = ((mask_from_indices([0, 1]), 1),)  # exactly one of {0,1} active
     post = bayesian_update_by_counting(p, history, 3)
     assert len(post) == 3 and all(0.0 <= x <= 1.0 for x in post)
     assert abs(post[2] - 0.5) < 1e-12  # individual 2 untouched by the test
 
 
 # ===================================================================
-# Fix #2: a deduced-healthy individual (posterior p_i ~ 0) was filtered out of
+# Fix #2: a deduced-clearancey individual (posterior p_i ~ 0) was filtered out of
 # all future pools, so its utility could never be harvested (it can only be
 # credited by being placed in a guaranteed-r=0 pool). The greedy must keep the
 # option to harvest it, closing a genuine gap to the optimum.
 # ===================================================================
 
-def test_known_healthy_individuals_are_harvested():
+def test_known_clearancey_individuals_are_harvested():
     from augmented.greedy import greedy_myopic_counting_expected_utility
     from augmented.solver import solve_optimal_dapts
     p = [0.23, 0.44, 0.42]
@@ -217,11 +217,11 @@ def test_eu_still_equals_simulation_after_harvest_fix():
 
 
 # ===================================================================
-# Fix (Gibbs ergodicity): the MCMC sampler could not move between feasible
-# regions with different TOTAL infected counts (single-site/swap/block moves all
+# Fix (Gibbs ergodicity): the MCMC generator could not move between feasible
+# regions with different TOTAL active counts (single-site/swap/block moves all
 # preserve the count), so it returned biased marginals. Canonical instance:
 # tests {0,1}=1 and {1,2}=1, prior 0.15 -> exact posterior [0.15, 0.85, 0.15],
-# but the stuck sampler returns ~[0,1,0] or ~[1,0,1] depending on the seed.
+# but the stuck generator returns ~[0,1,0] or ~[1,0,1] depending on the seed.
 # ===================================================================
 
 def _force_mcmc_gibbs(p, history, n, seed, cap=2):
@@ -245,7 +245,7 @@ def test_gibbs_mcmc_is_ergodic_across_count_levels():
         err = max(abs(marg[i] - exact[i]) for i in range(3))
         assert err < 0.05, (
             f"seed={seed}: gibbs marginals {marg} vs exact {exact} (err {err:.3f}) "
-            "— sampler stuck in one count level (non-ergodic)"
+            "— generator stuck in one count level (non-ergodic)"
         )
 
 

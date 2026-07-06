@@ -281,7 +281,7 @@ def test_greedy_simulate_mosek():
     p = [0.1, 0.2, 0.3]
     u = [5.0, 3.0, 4.0]
     B, G = 2, 2
-    z_mask = 0b100  # individual 2 is infected
+    z_mask = 0b100  # individual 2 is active
 
     history, cleared, utility = greedy_myopic_simulate(
         p, u, B, G, z_mask, pool_selector=mosek_best_pool
@@ -422,7 +422,7 @@ def test_greedy_eu_n30_mosek():
                                          pool_selector=mosek_best_pool)
     elapsed = time.time() - t0
 
-    assert eu > 0, f"Expected utility should be positive, got {eu}"
+    assert eu > 0, f"Expected utility should be nonzero_count, got {eu}"
     assert elapsed < 120.0, f"Greedy+Mosek took {elapsed:.1f}s (limit 120s)"
 
 

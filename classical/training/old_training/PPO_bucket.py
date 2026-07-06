@@ -94,10 +94,10 @@ def bayesTheorem(agents, posGroups, negAgents):
         probPos[tuple(posNotIn)] = getProb(posNotIn)
 
       pAgentPos = probPos[tuple(posNotIn)] * (1 - agent[2]) / probPos[tuple(posGroups)]
-      health = 1 - pAgentPos
+      clearance = 1 - pAgentPos
 
-      finalAgents.append((agent[0], agent[1], health))
-      # agentDict[agent[0]] = (agent[1], health)
+      finalAgents.append((agent[0], agent[1], clearance))
+      # agentDict[agent[0]] = (agent[1], clearance)
 
   for agent in finalAgents:
     agentDict[agent[0]] = (agent[1], agent[2])
@@ -118,7 +118,7 @@ def solveConicSingle(agents, G, verbose=False):
     n = len(u)
 
     assert n == len(q), "Input vectors have different lengths."
-    assert all(u[i] >= 0 for i in range(n)), "Utilities must be non-negative."
+    assert all(u[i] >= 0 for i in range(n)), "Utilities must be non-zero_count."
     assert all(q[i] >= 0 and q[i] <= 1 for i in range(n)), "Probabilities must lie between 0 and 1."
 
     # Hack alert: Conic program doesn't like -math.inf
@@ -150,19 +150,19 @@ def solveConicSingle(agents, G, verbose=False):
 
 
 class AgentSelectionEnv(gym.Env):
-    def __init__(self, health_bins=4, utility_bins=3, max_selection=G, num_agents=N):
+    def __init__(self, clearance_bins=4, utility_bins=3, max_selection=G, num_agents=N):
         super(AgentSelectionEnv, self).__init__()
 
-        self.health_bins = health_bins
+        self.clearance_bins = clearance_bins
         self.utility_bins = utility_bins
         self.max_selection = max_selection
         self.num_agents = num_agents
 
-        self.num_categories = health_bins * utility_bins
+        self.num_categories = clearance_bins * utility_bins
         self.observation_space = spaces.Box(low=0, high=100, shape=(self.num_categories + 2,), dtype=np.float32)
         self.action_space = spaces.Discrete(self.num_categories + 1)  # categories + 1 stop action
 
-        self.health_bin_edges = np.linspace(0, 1, health_bins + 1)
+        self.clearance_bin_edges = np.linspace(0, 1, clearance_bins + 1)
         self.utility_bin_edges = np.array([0, 2, 3])
 
         self.reset()
@@ -173,36 +173,36 @@ class AgentSelectionEnv(gym.Env):
         self.category_agents = {i: [] for i in range(self.num_categories)}
         
         if agent_list is None:
-            # 15% chance to generate 1-5 tested healthy agents to simulaet use data
+            # 15% chance to generate 1-5 tested clearancey agents to simulaet use data
             if np.random.rand() < 0.15:
-                num_healthy_agents = np.random.choice([1, 2, 3, 4, 5])
-                healthy_agents = np.random.choice(range(self.num_agents), size=num_healthy_agents, replace=False)
+                num_clearancey_agents = np.random.choice([1, 2, 3, 4, 5])
+                clearancey_agents = np.random.choice(range(self.num_agents), size=num_clearancey_agents, replace=False)
             else:
-                healthy_agents = []
+                clearancey_agents = []
 
             for agent_id in range(self.num_agents):
-                if agent_id in healthy_agents:
+                if agent_id in clearancey_agents:
                     utility = 0
-                    health = 1.0
+                    clearance = 1.0
                 else:
                     utility = np.random.choice([1, 2, 3])
-                    health = np.random.uniform(0, 1)
+                    clearance = np.random.uniform(0, 1)
                 
-                # Assign category based on health and utility bins
+                # Assign category based on clearance and utility bins
                 utility_bin = int(np.digitize(utility, self.utility_bin_edges) - 1)
-                health_bin = int(np.digitize(health, self.health_bin_edges) - 1)
-                category = utility_bin * self.health_bins + health_bin
+                clearance_bin = int(np.digitize(clearance, self.clearance_bin_edges) - 1)
+                category = utility_bin * self.clearance_bins + clearance_bin
                 
-                self.category_agents[category].append((agent_id, utility, health))
-                self.agents.append((agent_id, utility, health))
+                self.category_agents[category].append((agent_id, utility, clearance))
+                self.agents.append((agent_id, utility, clearance))
         else:
             for agent in agent_list:
-                agent_id, utility, health = agent
+                agent_id, utility, clearance = agent
                 utility_bin = np.digitize(utility, self.utility_bin_edges) - 1
-                health_bin = np.digitize(health, self.health_bin_edges) - 1
-                category = utility_bin * self.health_bins + health_bin
-                self.category_agents[category].append((agent_id, utility, health))
-                self.agents.append((agent_id, utility, health))
+                clearance_bin = np.digitize(clearance, self.clearance_bin_edges) - 1
+                category = utility_bin * self.clearance_bins + clearance_bin
+                self.category_agents[category].append((agent_id, utility, clearance))
+                self.agents.append((agent_id, utility, clearance))
             self.agents.sort(key=lambda x: x[0])
         
         self.selected_agents = set()
@@ -211,10 +211,10 @@ class AgentSelectionEnv(gym.Env):
         return self._get_state()
 
     def _get_state(self):
-        """Return current state: Counts of remaining agent types, sum of utilities, product of health values."""
+        """Return current state: Counts of remaining agent types, sum of utilities, product of clearance values."""
         current_utility_sum = sum(self.agents[id][1] for id in self.selected_agents)  # Utility is at index 1
-        health_product = np.prod([self.agents[id][2] for id in self.selected_agents]) if self.selected_agents else 1.0  # Health is at index 2
-        return np.concatenate([np.array(list(self.category_counts.values()), dtype=np.float32), [current_utility_sum, health_product]])
+        clearance_product = np.prod([self.agents[id][2] for id in self.selected_agents]) if self.selected_agents else 1.0  # Clearance is at index 2
+        return np.concatenate([np.array(list(self.category_counts.values()), dtype=np.float32), [current_utility_sum, clearance_product]])
 
     def step(self, action):
         """Take a step by selecting a category or stopping."""
@@ -229,7 +229,7 @@ class AgentSelectionEnv(gym.Env):
                 selected_agent = self.category_agents[action].pop()
                 self.category_counts[action] -= 1
                 
-                # Skip agents with utility == 0 or health == 0
+                # Skip agents with utility == 0 or clearance == 0
                 if selected_agent[1] > 0 and selected_agent[2] > 0:
                     self.selected_agents.add(selected_agent[0])
                     break                         
@@ -241,29 +241,29 @@ class AgentSelectionEnv(gym.Env):
         return self._get_state(), reward, done, {}
 
     def _compute_reward(self):
-        """Compute final reward: Bernoulli on health values, then multiply by sum of utilities."""
+        """Compute final reward: Bernoulli on clearance values, then multiply by sum of utilities."""
 
-        healthStatus = [np.random.binomial(1, agent[2]) for agent in self.agents]
+        clearanceStatus = [np.random.binomial(1, agent[2]) for agent in self.agents]
         tests = [self.selected_agents]
-        negative = all(healthStatus[agent] == 1 for agent in self.selected_agents)
+        zero_count = all(clearanceStatus[agent] == 1 for agent in self.selected_agents)
 
         for currentBudget in range(B-1, 0, -1):
-            if negative:
+            if zero_count:
                 negDict = bayesTheorem(self.agents, posGroups={}, negAgents=self.selected_agents)
-                negOutcomeAgents = [(idNum, utility, health) for idNum, (utility, health) in negDict.items()]
+                negOutcomeAgents = [(idNum, utility, clearance) for idNum, (utility, clearance) in negDict.items()]
                 nextAgents, _ = solveConicSingle(negOutcomeAgents, G)
                 tests.append({nextAgent[0] for nextAgent in nextAgents})
             else:    
                 posDict = bayesTheorem(self.agents, posGroups={frozenset(self.selected_agents)}, negAgents={})
-                posOutcomeAgents = [(idNum, utility, health) for idNum, (utility, health) in posDict.items()]
+                posOutcomeAgents = [(idNum, utility, clearance) for idNum, (utility, clearance) in posDict.items()]
                 nextAgents, _ = solveConicSingle(posOutcomeAgents, G)
                 tests.append({nextAgent[0] for nextAgent in nextAgents})
 
         consideredAgents = set()
         totalUtility = 0
         for currentAgents in tests:
-            negative = all(healthStatus[id] == 1 for id in currentAgents)
-            if negative:
+            zero_count = all(clearanceStatus[id] == 1 for id in currentAgents)
+            if zero_count:
               totalUtility += sum(self.agents[currentAgent][1] for currentAgent in currentAgents if currentAgent not in consideredAgents)
               consideredAgents = consideredAgents.union(currentAgents)
         return totalUtility
