@@ -79,11 +79,44 @@ dependía de la semilla. Las consultas viven en `tests_correctness_fixes.py` (la
 ergodicidad y la de componentes independientes) y en `tests_gibbs_validity.py`
 (25 escenarios, todos dentro de tolerancia). La suite completa quedó en verde.
 
+## La corrección de julio: el equilibrio detallado
+
+La auditoría del 6 de julio de 2026 encontró que la reescritura de junio dejó un
+segundo defecto, independiente del primero. Los movimientos de camino alternante
+sí hacen irreducible a la cadena (se verificó por enumeración exacta en cinco
+topologías), pero la propuesta es asimétrica: la probabilidad de proponer el
+camino de ida depende del número de parejas elegibles en cada paso de reparación,
+y ese número difiere entre el estado actual y el propuesto. La aceptación usaba
+solo el cociente de priors (Metropolis puro), que exige propuesta simétrica, así
+que la cadena convergía con toda confianza a una distribución estacionaria
+equivocada. En el contraejemplo mínimo (tests {0,1,2}=1 y {2,3,4}=1 con priors
+heterogéneos) la distancia de variación total entre la estacionaria de la cadena
+y la posterior exacta era 0.067, con 6.7 puntos porcentuales de error en una
+marginal, estable en todas las semillas.
+
+El defecto era invisible para la suite porque el único test que ejercitaba el
+MCMC usaba una fibra de dos estados donde toda propuesta exitosa es determinista
+y la asimetría desaparece. Los resultados con n≤14 nunca tocaron esta rama (el
+umbral exacto por componente es 16), así que ningún número publicado cambia.
+
+La corrección es el factor de Hastings por camino espejo: al construir la
+propuesta se registra la secuencia de reparaciones, y la probabilidad del camino
+inverso se computa releyendo esa misma secuencia desde el estado propuesto, con
+los roles de ida y vuelta invertidos. La aceptación pasa a ser
+min(1, π(z')·q(rev)/π(z)·q(fwd)). Verificación: la matriz de transición exacta
+de la cadena corregida (enumerando todas las ramas del generador aleatorio) da
+distancia de variación total 0.000000 contra la posterior en las cinco
+topologías, y el error end-to-end del muestreador cae de 0.067 a ruido de Monte
+Carlo (~0.003). El test de regresión con el contraejemplo vive en
+`tests_correctness_fixes.py`.
+
 ## Resumen
 
-El muestreador de Gibbs pasó de dar respuestas sesgadas y dependientes de la
-semilla en pools solapados a converger a la posterior correcta, gracias a la
-descomposición en componentes con resolución exacta por componente y a los
-movimientos de camino alternante para las componentes grandes. La versión
-navegable de esta explicación está en la nota del vault sobre la no ergodicidad de
-Gibbs.
+El muestreador de Gibbs necesitó dos correcciones. La de junio atacó la
+irreducibilidad: la descomposición en componentes con resolución exacta por
+componente y los movimientos de camino alternante que cruzan niveles de conteo.
+La de julio atacó el equilibrio detallado: el factor de Hastings por camino
+espejo que la propuesta asimétrica exigía. Con ambas, la cadena es irreducible y
+converge a la posterior correcta, verificado por matriz de transición exacta y
+por comparación directa con la enumeración. La versión navegable de esta
+explicación está en la nota del vault sobre la no ergodicidad de Gibbs.

@@ -261,6 +261,33 @@ def test_gibbs_components_solved_independently():
     assert err < 0.05, f"gibbs {marg} vs exact {exact} (err {err:.3f})"
 
 
+# ===================================================================
+# Fix (Gibbs detailed balance): the alternating-path proposal is ASYMMETRIC
+# (the number of eligible repair partners differs between a state and the
+# proposed state), so plain-Metropolis acceptance with only the prior ratio
+# converges to a biased stationary distribution even though the chain is
+# irreducible. Canonical instance: tests {0,1,2}=1 and {2,3,4}=1 with
+# heterogeneous priors — the uncorrected chain gives P(Z_2) ~ 0.207 vs the
+# exact 0.141 (audit 2026-07-06: stationary TV = 0.067, stable across seeds).
+# The fix is the mirror-path Hastings correction q(z'->z)/q(z->z').
+# ===================================================================
+
+def test_gibbs_mcmc_hastings_correction_on_asymmetric_fiber():
+    from augmented.bayesian import bayesian_update_by_counting
+    p = [0.1, 0.3, 0.5, 0.7, 0.9]
+    history = ((mask_from_indices([0, 1, 2]), 1),
+               (mask_from_indices([2, 3, 4]), 1))
+    exact = bayesian_update_by_counting(p, history, 5)
+    for seed in (0, 1, 7):
+        marg = _force_mcmc_gibbs(p, history, 5, seed=seed)
+        err = max(abs(marg[i] - exact[i]) for i in range(5))
+        assert err < 0.03, (
+            f"seed={seed}: gibbs {[round(x, 4) for x in marg]} vs exact "
+            f"{[round(x, 4) for x in exact]} (err {err:.3f}) — asymmetric "
+            "proposal without Hastings correction biases the marginals"
+        )
+
+
 def _run_all():
     import traceback
     tests = [v for k, v in sorted(globals().items())

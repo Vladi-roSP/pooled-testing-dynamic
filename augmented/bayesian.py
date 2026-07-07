@@ -390,14 +390,27 @@ def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
     tests, each repaired by flipping a partner the other way, propagating until
     every test is balanced again. Crucially these moves CAN change the total
     active count (e.g. (+1,-1,+1) on {0,1}=1,{1,2}=1), which single-site/swap
-    moves cannot — restoring ergodicity across count levels. Returns a dict
-    {agent: new_value} or None if it dead-ends within the step budget."""
+    moves cannot — restoring ergodicity across count levels.
+
+    The proposal is ASYMMETRIC: the eligible-partner counts along the path
+    differ between `state` and the proposed state, so Metropolis acceptance
+    needs the Hastings factor q(z'->z)/q(z->z'). The reverse of this exact
+    path (same start agent, same deterministic test order, flip directions
+    inverted) is the unique mirror proposal from the new state, so
+    q(rev)/q(fwd) = prod(|elig_fwd_k|) / prod(|elig_rev_k|), where the reverse
+    eligible sets are computed under the flipped assignment with the same
+    already-in-path exclusions.
+
+    Returns (move, log_hastings) with move a dict {agent: new_value} and
+    log_hastings = log q(rev) - log q(fwd), or None if the path dead-ends
+    within the step budget."""
     a0 = rng.choice(comp)
     delta = {a0: 1 - 2 * state[a0]}          # +1 (0->1) or -1 (1->0)
     pending = {}                              # test_idx -> net imbalance to undo
     for ti in agent_tests[a0]:
         pending[ti] = pending.get(ti, 0) + delta[a0]
 
+    path = []                                 # (test_idx, want, n_eligible_fwd)
     steps = 0
     while any(v != 0 for v in pending.values()):
         steps += 1
@@ -414,21 +427,45 @@ def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
         if not elig:
             return None                      # dead end -> reject
         a = rng.choice(elig)
+        path.append((ti, a, want, len(elig)))
         delta[a] = want
         for tj in agent_tests[a]:
             pending[tj] = pending.get(tj, 0) + want
 
-    return {a: state[a] + d for a, d in delta.items()}
+    move = {a: state[a] + d for a, d in delta.items()}
+
+    # Mirror-path replay: eligible counts of the reverse proposal from `move`.
+    # At reverse step k the excluded set is the same {a0, chosen_1..chosen_{k-1}}
+    # and every agent still keeps its post-move value (agents in delta are
+    # flipped; agents outside delta are unchanged).
+    log_corr = 0.0
+    seen = {a0}
+    for ti, chosen, want, n_fwd in path:
+        members, r = tests[ti]
+        rev_want = -want
+        n_rev = 0
+        for a in members:
+            if a in seen:
+                continue
+            sa = move[a] if a in move else state[a]
+            if (rev_want == -1 and sa == 1) or (rev_want == +1 and sa == 0):
+                n_rev += 1
+        seen.add(chosen)
+        log_corr += math.log(n_fwd) - math.log(n_rev)
+
+    return move, log_corr
 
 
 def _alternating_move_component_marginals(comp, tests, p, rng,
                                           num_iterations, burn_in,
                                           window_size, tolerance):
-    """Metropolis generator over a connected component using alternating-path
-    Markov moves (count-changing, hence ergodic) with prior-ratio acceptance.
-    Used only when a single connected component is too large for exact
-    enumeration (rare). Validated against exact enumeration on small forced
-    instances."""
+    """Metropolis-Hastings generator over a connected component using
+    alternating-path Markov moves (count-changing, hence ergodic across count
+    levels) with prior-ratio acceptance times the mirror-path Hastings factor
+    (the proposal is asymmetric; without the correction the stationary
+    distribution is biased — audit 2026-07-06). Used only when a single
+    connected component is too large for exact enumeration (rare). Validated
+    against exact enumeration on small forced instances."""
     agent_tests = {a: [] for a in comp}
     for ti, (members, r) in enumerate(tests):
         for a in members:
@@ -448,11 +485,11 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
     for it in range(num_iterations):
         # several move attempts per sweep to decorrelate
         for _ in range(max(len(comp), 5)):
-            move = _propose_alternating_move(comp, tests, agent_tests,
-                                             state, rng, max_steps)
-            if move is None:
+            proposal = _propose_alternating_move(comp, tests, agent_tests,
+                                                 state, rng, max_steps)
+            if proposal is None:
                 continue
-            log_ratio = 0.0
+            move, log_ratio = proposal   # start from the Hastings factor
             ok = True
             for a, nv in move.items():
                 ov = state[a]
