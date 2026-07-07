@@ -144,6 +144,37 @@ def test_u_pen_vhat_comparison_documented():
         "update the finding note if the greedy V-hat now certifies tighter")
 
 
+def test_vhat_registry_custom_function_still_yields_valid_bound():
+    # La frontera de seguridad del harness de autoresearch: CUALQUIER V-hat
+    # registrada — incluso una arbitraria y mal calibrada — debe producir una
+    # cota valida, porque la penalizacion es una diferencia de martingala por
+    # construccion. Solo la tightness varia con V-hat, nunca la validez.
+    from augmented.vhat import register, VHAT_REGISTRY
+    from augmented.certificates import u_pen_exact
+
+    name = "_test_weird_vhat"
+    if name not in VHAT_REGISTRY:
+        @register(name)
+        def _weird(ctx, h_fs, remaining):
+            # deliberadamente rara: escala grande, mezcla tamano de historia
+            # con utilidades, ignora el posterior
+            return 7.3 * len(h_fs) + 0.5 * sum(ctx.u) * (remaining + 1)
+
+    rng = random.Random(23)
+    for k in range(5):
+        n = rng.choice([3, 4])
+        B = rng.choice([1, 2])
+        G = rng.choice([2, 3])
+        p = [rng.uniform(0.05, 0.95) for _ in range(n)]
+        u = [rng.uniform(0.5, 5.0) for _ in range(n)]
+        opt, _ = solve_optimal_dapts(p, u, B, G)
+        upen = u_pen_exact(p, u, B, G, v_hat=name)
+        assert upen >= opt - 1e-9, (
+            f"instance {k}: U_pen(custom)={upen:.6f} < OPT={opt:.6f} — "
+            "una V-hat registrada rompio la validez; la frontera del teorema "
+            "esta mal implementada")
+
+
 def _run_all():
     import traceback
     tests = [v for k, v in sorted(globals().items())

@@ -30,6 +30,7 @@ import random
 from augmented.core import test_result, popcount
 from augmented.bayesian import exact_pool_pmf, bayesian_update_by_counting
 from augmented.greedy import greedy_myopic_expected_utility
+from augmented.vhat import get as _get_vhat
 
 
 # -------------------------------------------------------------------
@@ -82,8 +83,12 @@ def _all_pools(n, G):
 
 
 class _PenaltyEngine:
-    """V-hat y PMFs predictivas con cache por historia (compartida entre
-    perfiles Z: ambas dependen solo de la historia, no de Z)."""
+    """Contexto para las V-hat del registro (augmented/vhat.py) y PMFs
+    predictivas, con caches por historia (compartidas entre perfiles Z: todo
+    depende solo de la historia, no de Z). La construccion de la penalizacion
+    y el problema interno viven AQUI (referencia intocable); las V-hat viven
+    en vhat.py (superficie editable). Esa frontera de archivos es la frontera
+    del teorema de validez."""
 
     def __init__(self, p, u, n, G, v_hat):
         self.p = p
@@ -91,42 +96,42 @@ class _PenaltyEngine:
         self.n = n
         self.G = G
         self.kind = v_hat
+        self._fn = _get_vhat(v_hat)
         self._vhat_cache = {}
         self._pmf_cache = {}
+        self._post_cache = {}
+
+    # --- primitivas cacheadas expuestas a las V-hat (ctx.*) ---
+
+    def posterior(self, h_fs):
+        """Marginales posteriores exactas P(Z_i=1 | h), cacheadas."""
+        val = self._post_cache.get(h_fs)
+        if val is None:
+            val = bayesian_update_by_counting(self.p, tuple(h_fs), self.n)
+            self._post_cache[h_fs] = val
+        return val
+
+    def cleared_mask(self, h_fs):
+        """Bitmask de individuos acreditados (en algun pool con r=0)."""
+        cleared = 0
+        for pool, r in h_fs:
+            if r == 0:
+                cleared |= pool
+        return cleared
+
+    def greedy_value(self, p, u, budget):
+        """EU del greedy miope secuencial con presupuesto `budget`."""
+        if budget <= 0:
+            return 0.0
+        return greedy_myopic_expected_utility(p, u, budget, self.G)
+
+    # --- evaluacion de la V-hat registrada ---
 
     def vhat(self, h_fs, remaining):
-        """Valor aproximado del estado (historia, presupuesto restante).
-
-        "umax": potencial posterior sum_i u_i * P(Z_i=0 | h) — estatico, no
-        depende del presupuesto restante.
-        "greedy": valor-a-futuro del greedy miope jugando `remaining` tests
-        desde el posterior de h, con las utilidades ya acreditadas puestas a
-        cero (BSS admite V-hat dependiente del tiempo; cualquier funcion de
-        (h, t) da cota valida).
-        """
-        if self.kind == "zero":
-            return 0.0
-        if self.kind == "umax":
-            key = h_fs
-        else:
-            key = (h_fs, remaining)
+        key = (h_fs, remaining)
         val = self._vhat_cache.get(key)
         if val is None:
-            post = bayesian_update_by_counting(self.p, tuple(h_fs), self.n)
-            if self.kind == "umax":
-                val = sum(self.u[i] * (1.0 - post[i]) for i in range(self.n))
-            else:
-                if remaining <= 0:
-                    val = 0.0
-                else:
-                    cleared = 0
-                    for pool, r in h_fs:
-                        if r == 0:
-                            cleared |= pool
-                    u_rem = [0.0 if (cleared >> i & 1) else self.u[i]
-                             for i in range(self.n)]
-                    val = greedy_myopic_expected_utility(
-                        post, u_rem, remaining, self.G)
+            val = self._fn(self, h_fs, remaining)
             self._vhat_cache[key] = val
         return val
 
@@ -168,9 +173,10 @@ def u_pen_exact(p, u, B, G, v_hat="umax", scales=(0.5, 1.0, 2.0)):
     una cota valida; se devuelve min_c U_pen(c). El minimo se toma sobre los
     AGREGADOS (el minimo por-perfil no seria una cota valida).
 
-    v_hat: "zero" (recupera U_PI), "umax" (potencial posterior
-    sum_i u_i * P(Z_i=0 | h)) o "greedy" (valor-a-futuro del greedy miope,
-    dependiente del presupuesto restante).
+    v_hat: nombre de una funcion registrada en augmented/vhat.py ("zero"
+    recupera U_PI; "umax" es el potencial posterior; "greedy" el
+    valor-a-futuro del greedy; "research" el slot de busqueda del harness).
+    Cualquier V-hat registrada da cota valida; solo la tightness varia.
     """
     n = len(p)
     q = [1.0 - pi for pi in p]
