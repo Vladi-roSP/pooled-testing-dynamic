@@ -28,9 +28,18 @@ import math
 import random
 
 from augmented.core import test_result, popcount
-from augmented.bayesian import exact_pool_pmf, bayesian_update_by_counting
+from augmented.bayesian import (exact_pool_pmf, bayesian_update_by_counting,
+                                gibbs_update)
 from augmented.greedy import greedy_myopic_expected_utility
 from augmented.vhat import get as _get_vhat
+
+# Umbral para el posterior expuesto a las V-hat: exacto (2^n) en n chico, Gibbs
+# corregido (por componentes) por encima. Hace que la primitiva de marginales
+# escale, de modo que una V-hat basada en marginales (p.ej. umax) corre a n=50
+# igual que en producción, mientras que una V-hat que enumera el soporte
+# CONJUNTO (2^n) no. Los certificados con puntaje viven en n<=6, así que su
+# U_pen se computa siempre por la rama exacta y no cambia.
+_EXACT_POSTERIOR_MAX_N = 16
 
 
 # -------------------------------------------------------------------
@@ -104,10 +113,15 @@ class _PenaltyEngine:
     # --- primitivas cacheadas expuestas a las V-hat (ctx.*) ---
 
     def posterior(self, h_fs):
-        """Marginales posteriores exactas P(Z_i=1 | h), cacheadas."""
+        """Marginales posteriores P(Z_i=1 | h), cacheadas. Exactas en n chico,
+        Gibbs corregido (por componentes) por encima de _EXACT_POSTERIOR_MAX_N.
+        Es la primitiva escalable: no enumera el soporte conjunto."""
         val = self._post_cache.get(h_fs)
         if val is None:
-            val = bayesian_update_by_counting(self.p, tuple(h_fs), self.n)
+            if self.n <= _EXACT_POSTERIOR_MAX_N:
+                val = bayesian_update_by_counting(self.p, tuple(h_fs), self.n)
+            else:
+                val = gibbs_update(self.p, tuple(h_fs), self.n, seed=0)
             self._post_cache[h_fs] = val
         return val
 

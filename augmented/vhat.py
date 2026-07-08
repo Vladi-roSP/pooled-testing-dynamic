@@ -10,18 +10,33 @@ que tan APRETADA es la cota, nunca su validez — que ademas se verifica
 instancia por instancia en el benchmark y en tests_certificates.py.
 
 Interfaz: una V-hat es fn(ctx, h_fs, remaining) -> float, donde
-  ctx        expone el problema y primitivas cacheadas:
+  ctx        expone el problema y primitivas cacheadas Y ESCALABLES:
              ctx.p, ctx.u, ctx.n, ctx.G,
-             ctx.posterior(h_fs)   -> [P(Z_i=1 | h)]  (exacto, cacheado)
+             ctx.posterior(h_fs)   -> [P(Z_i=1 | h)]  (marginales; exacto en n
+                                      chico, Gibbs por componentes en n grande)
              ctx.cleared_mask(h_fs)-> bitmask de acreditados (pools con r=0)
              ctx.greedy_value(p, u, budget) -> EU del greedy miope
   h_fs       la historia como frozenset de pares (pool_mask, r)
   remaining  tests que quedan DESPUES de observar el resultado de este paso
 
+REGLA DURA DE ESCALABILIDAD (jul 2026). Una V-hat debe correr en tiempo que
+NO crezca como resolver el problema. En concreto: NO enumerar el soporte
+CONJUNTO del posterior (nada de `for z in range(1 << n)` ni listas de tamano
+2^n), NO llamar al solver exacto (solve_optimal_dapts) ni recomputar el value
+function optimo. El benchmark aplica una prueba de escalabilidad (llama a la
+V-hat en una instancia n~32 con tope de tiempo); una V-hat que enumera el
+conjunto o resuelve el problema TRUENA ahi y la corrida se descarta.
+Construyela SOLO con las primitivas de ctx (marginales, greedy_value), que ya
+escalan. Motivo: certificar importa en n=50, donde el value function exacto es
+justo lo intratable — usarlo da una cota valida pero circular (apretada porque
+resolvio el problema), inutil para la mision.
+
 Hallazgos que orientan el diseno (jul 2026): la V-hat buena es insesgada
 antes que precisa (el adversario interno explota sesgos, p.ej. el error de
 independencia del greedy-a-futuro), y su alcance debe crecer con el horizonte
-(el apriete de la V-hat miope muere en B=3).
+(el apriete de la V-hat miope muere en B=3). La direccion abierta es una V-hat
+con profundidad d(B) construida sobre marginales/rollouts, no sobre el
+soporte conjunto.
 """
 
 VHAT_REGISTRY = {}
