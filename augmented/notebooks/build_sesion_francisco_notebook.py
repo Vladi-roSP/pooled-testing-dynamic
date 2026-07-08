@@ -182,11 +182,17 @@ hay que acotarlo por arriba:
 
 $$\text{greedy} \;\le\; \text{OPT} \;\le\; U_{pen} \;\le\; U_{PI}$$
 
-$U_{PI}$: un adivino que conoce $Z$ limpia a los mejores. $U_{pen}$: al
-adivino se le cobra una multa por usar el futuro. El teorema
-(Brown–Smith–Sun): la cota es válida para cualquier multa bien construida;
-elegirla bien solo la aprieta. El certificado es greedy/$U_{pen}$ — y nadie
-había usado esta técnica en este problema.""")
+$U_{PI}$ es lo que lograría un planificador que conoce la verdad —quién está
+enfermo— antes de decidir. Como lo ve todo, su valor es un techo de lo que
+cualquiera puede lograr; pero un techo flojo, porque conocer la verdad es una
+ventaja enorme. $U_{pen}$ hace la comparación justa: deja que ese planificador
+siga viendo la verdad, pero le COBRA por cada paso en que verla le ayudó. La
+multa se diseña para que a un jugador honesto —que no ve la verdad— le salga
+gratis en promedio, y al que sí la ve le cueste exactamente la ventaja que
+sacó. Por eso $U_{pen}$ sigue siendo techo (OPT $\le U_{pen}$) pero más bajo
+que $U_{PI}$: una cota más apretada. El teorema (Brown–Smith–Sun): cualquier
+multa así construida da cota válida; elegirla bien solo la aprieta más. El
+certificado es greedy$/U_{pen}$ — y nadie había traído esta técnica aquí.""")
 
 code(r"""from augmented.solver import solve_optimal_dapts
 from augmented.greedy import greedy_myopic_expected_utility
@@ -220,8 +226,8 @@ ax.set_title(f'El sándwich en una instancia (n=5, B=2, G=3): '
 ax.grid(False)
 fig.tight_layout(); plt.show()""")
 
-md(r"""¿Por qué $U_{PI}$ es floja? El adivino es demasiado fuerte: con presupuesto
-suficiente limpia a casi todos y la cota se pega a $U^{\max}$:""")
+md(r"""¿Por qué $U_{PI}$ es floja? El que conoce la verdad es demasiado fuerte: con
+presupuesto suficiente limpia a casi todos y la cota se pega a $U^{\max}$:""")
 
 code(r"""from augmented.baselines import u_max
 
@@ -241,12 +247,12 @@ for Bx in Bs:
 
 fig, ax = plt.subplots(figsize=(6, 3.2))
 ax.plot(Bs, curves['U_max'], ls=':', color=GRIS, label='U_max — tope absoluto')
-ax.plot(Bs, curves['U_PI'], marker='s', ms=4, color=AMBAR, label='U_PI — adivino que ve el futuro')
+ax.plot(Bs, curves['U_PI'], marker='s', ms=4, color=AMBAR, label='U_PI — conoce la verdad de antemano')
 ax.plot(Bs, curves['OPT'], marker='o', ms=4, color=TINTA, label='OPT — óptimo real (incalculable a escala)')
 ax.fill_between(Bs, curves['OPT'], curves['U_PI'], color=AMBAR, alpha=0.12)
 ax.set_xticks(Bs); ax.set_xlabel('presupuesto B')
 ax.set_ylabel('utilidad esperada')
-ax.set_title('Al crecer B, el adivino U_PI se aproxima al tope U_max;\nel hueco ámbar hasta el óptimo es lo que la penalización recorta', fontsize=10)
+ax.set_title('U_PI queda por encima del óptimo real (cota floja);\nla penalización recorta la distancia entre ambos', fontsize=10)
 ax.legend(fontsize=8)
 fig.tight_layout(); plt.show()""")
 
@@ -289,8 +295,8 @@ md(r"""Tres lecturas:
 
 Un fracaso instructivo: la $\hat V$ sofisticada (el valor a futuro del
 greedy) certifica *peor* que la simple. Usa marginales como si fueran
-independientes, y el adivino explota ese sesgo. El independence gap atacando
-al certificado.
+independientes, y el que conoce la verdad explota ese sesgo. El independence
+gap atacando al certificado.
 
 > **Para discutir.** ¿Existe una $\hat V$ con profundidad $d(B)$ — insesgada
 > y con alcance creciente en el horizonte — cuyo problema interno se
