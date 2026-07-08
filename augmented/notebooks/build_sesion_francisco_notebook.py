@@ -279,7 +279,7 @@ ax.legend(handles=[
     Line2D([], [], marker='o', color=AZUL, ls='', label='certificado U_pen'),
     Line2D([], [], marker='D', color=GRIS, ls='', label='greedy/OPT (real)')],
     fontsize=8, loc='lower right')
-ax.set_title('El apriete (segmento azul) y lo que sigue faltando\nhasta lo real (rombo gris)', fontsize=10)
+ax.set_title('Cuánto aprieta la penalización sobre cada configuración,\ny la distancia que aún falta hasta el valor real', fontsize=10)
 fig.tight_layout(); plt.show()
 print(tabla.round(3))""")
 
@@ -371,8 +371,8 @@ brace(2, 3, 'miopía (lookahead d(B))', vals['U_single'] - 1.6)
 ax.set_ylim(0, top * 1.16)
 ax.set_xticks(list(xs)); ax.set_xticklabels(names, fontsize=9)
 ax.set_ylabel('utilidad esperada')
-ax.set_title('La escalera completa (n=5, B=2, G=2): políticas (gris), el óptimo (tinta),\n'
-             'las cotas computables (azul/ámbar) — un hueco por línea de investigación', fontsize=10)
+ax.set_title('La escalera completa (n=5, B=2, G=2): de la política más simple\n'
+             'a la cota más floja; cada hueco entre peldaños es una línea de investigación', fontsize=10)
 fig.tight_layout(); plt.show()""")
 
 md(r"""Tu mapa dice cuándo la información vale. La dirección propia agrega el eje
