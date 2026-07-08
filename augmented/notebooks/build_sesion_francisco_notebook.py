@@ -36,13 +36,10 @@ def code(src):
 # ===================================================================
 md(r"""# El certificado computable
 
-Sesión del 9 de julio de 2026. El cuaderno sigue el arco de la conversación:
-el rigor primero (una corrección al Gibbs, demostrada en vivo), después el
-resultado nuevo (la primera cota penalizada del problema), la figura que une
-las tres direcciones, la dirección que todo esto sostiene, y una demo en la
-recámara. Cada acto termina con una pregunta abierta; el objetivo del
-cuaderno no es cerrar la discusión sino provocarla. Ningún número está
-escrito a mano: todo se regenera aquí o se lee de un CSV versionado.""")
+Sesión del 9 de julio de 2026. Cinco actos: una corrección al Gibbs
+(demostrada en vivo), la primera cota penalizada del problema, el mapa con
+garantías, la dirección propuesta, y una demo. Cada acto cierra con una
+pregunta para discutir. Ningún número está escrito a mano.""")
 
 code(r"""import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(''))))
@@ -65,26 +62,17 @@ print('repo:', ROOT)""")
 # ===================================================================
 md(r"""## 1. El Gibbs necesitaba una segunda corrección
 
-Un muestreador MCMC necesita dos propiedades que se confunden fácil. La
-primera es la irreducibilidad: poder llegar a todos los estados. La segunda
-es el equilibrio detallado: visitarlos con las frecuencias correctas. La
-corrección de junio arregló la primera; la auditoría del 6 de julio encontró
-rota la segunda.
+Una cadena MCMC necesita dos cosas distintas: llegar a todos los estados
+(irreducibilidad) y visitarlos con las frecuencias correctas (equilibrio
+detallado). El arreglo de junio dio la primera. Faltaba la segunda.
 
-La intuición de por qué, con el contraejemplo mínimo (tests $\{0,1,2\}=1$ y
-$\{2,3,4\}=1$): considérese el estado $A=(0,0,1,0,0)$, donde el agente 2
-explica ambos conteos. Para salir de $A$ volteando al agente 2, la propuesta
-debe reparar los dos tests eligiendo un sustituto en cada uno — dos opciones
-en $\{0,1\}$ y dos en $\{3,4\}$: probabilidad $\tfrac14$ por par de
-sustitutos. El camino de regreso no elige nada: los sustitutos son los únicos
-elegibles. **Regresar a $A$ por el camino espejo es 4 veces más probable que
-salir por él.** La aceptación de Metropolis puro (solo ratio de priors)
-ignora esa asimetría, así que la cadena se estanca de más en $A$: converge,
-estable entre semillas, a una posterior equivocada. La corrección es el
-factor de Hastings del camino espejo.
-
-Las celdas siguientes lo muestran en vivo: la misma propuesta, con y sin la
-corrección, contra la posterior exacta.""")
+El porqué, en el contraejemplo (tests $\{0,1,2\}=1$ y $\{2,3,4\}=1$): para
+salir del estado $A=(0,0,1,0,0)$ hay que elegir un sustituto en cada test —
+dos opciones y dos opciones. Para regresar no se elige nada. **Regresar a
+$A$ es 4 veces más probable que salir.** La aceptación ignoraba esa
+asimetría (le faltaba el factor de Hastings), así que la cadena pasaba
+demasiado tiempo en $A$. Abajo: la misma propuesta, con y sin la corrección,
+contra la posterior exacta.""")
 
 code(r"""from augmented.core import mask_from_indices
 from augmented.bayesian import (bayesian_update_by_counting,
@@ -173,44 +161,32 @@ err_bug = max(abs(a - b) for a, b in zip(freq_bug, pi_exact))
 err_fix = max(abs(a - b) for a, b in zip(freq_fix, pi_exact))
 print(f'max error sobre la fibra: sin Hastings {err_bug:.3f} | con Hastings {err_fix:.3f}')""")
 
-md(r"""El panel izquierdo separa las dos propiedades: la cadena con bug visita los
-cinco estados (irreducible — el fix de junio funcionó) pero sobrecarga
-$00100$ tal como predice la asimetría 4:1. El derecho muestra por qué este
-tipo de bug es peligroso: la curva ámbar no oscila, se instala con toda
-confianza en el número equivocado; más iteraciones solo reducen el ruido
-alrededor del sesgo.
+md(r"""Izquierda: la cadena con bug visita los cinco estados (es irreducible) pero
+sobrecarga $00100$, justo el 4:1. Derecha: lo peligroso — la curva ámbar no
+oscila, se instala estable en el número equivocado. Más iteraciones no
+arreglan un sesgo.
 
-La prueba formal fue más fuerte que esta demostración: se enumeraron todas
-las ramas del generador aleatorio y se construyó la matriz de transición
-exacta de la cadena implementada — TV 0.067 contra la posterior; la
-corregida, TV 0.000000 en las cinco topologías auditadas. Los resultados con
-$n \le 14$ nunca tocaron esta rama (umbral exacto por componente: 16); la
-escalada a $n = 30$–$50$ ahora descansa sobre una cadena válida. Las
-distancias se midieron en TV, como pediste.
+La prueba formal fue más fuerte que esta demo: matriz de transición exacta
+de la cadena (enumerando el generador) — TV 0.067 antes, 0.000000 después,
+en cinco topologías. Nada con $n \le 14$ tocó esta rama; la escalada a
+$n=30$–$50$ ahora pisa firme. Las distancias van en TV, como pediste.
 
-> **Para discutir.** Con la cadena ya correcta, la pregunta de mixing queda
-> bien planteada: la regla $T \gtrsim (L/\varepsilon)^2$ da $\sim(m/2.5)^2$
-> por muestra independiente en una componente de $m$ agentes, pero es ciega a
-> cuellos de botella. ¿El grado $K$ acotado descarta los cuellos (conductancia,
-> canonical paths) y vuelve al mixing polinomial?""")
+> **Para discutir.** Con la cadena ya válida, ¿el grado $K$ acotado descarta
+> cuellos de botella en la fibra y da mixing polinomial?""")
 
 # ===================================================================
 md(r"""## 2. La primera cota penalizada
 
-El óptimo es incalculable más allá de $n = 14$; certificar una política exige
-acotarlo por arriba. La estructura es un sándwich:
+El óptimo es incalculable más allá de $n=14$. Para certificar una política
+hay que acotarlo por arriba:
 
-$$\text{greedy} \;\le\; \text{OPT} \;\le\; U_{pen} \;\le\; U_{PI},$$
+$$\text{greedy} \;\le\; \text{OPT} \;\le\; U_{pen} \;\le\; U_{PI}$$
 
-donde $U_{PI}$ es la cota de información perfecta (el adversario que conoce
-$Z$ limpia a las $B \cdot G$ personas limpias de mayor utilidad) y $U_{pen}$
-la versión penalizada: al adivino se le cobra, en cada paso, la diferencia
-entre el valor estimado tras ver el resultado y su esperanza antes de verlo,
-medida con una función $\hat V$. El teorema (Brown–Smith–Sun): para
-**cualquier** $\hat V$ la cota sigue siendo válida; solo la tightness depende
-de elegirla bien. El certificado es el cociente entre los dos extremos
-computables del sándwich — y nadie había traído esta técnica a este
-problema.""")
+$U_{PI}$: un adivino que conoce $Z$ limpia a los mejores. $U_{pen}$: al
+adivino se le cobra una multa por usar el futuro. El teorema
+(Brown–Smith–Sun): la cota es válida para cualquier multa bien construida;
+elegirla bien solo la aprieta. El certificado es greedy/$U_{pen}$ — y nadie
+había usado esta técnica en este problema.""")
 
 code(r"""from augmented.solver import solve_optimal_dapts
 from augmented.greedy import greedy_myopic_expected_utility
@@ -244,10 +220,8 @@ ax.set_title(f'El sándwich en una instancia (n=5, B=2, G=3): '
 ax.grid(False)
 fig.tight_layout(); plt.show()""")
 
-md(r"""¿Por qué la hindsight pura se afloja? Porque el adversario que ve el futuro
-es demasiado fuerte: cuando el presupuesto $B \cdot G$ se acerca al número de
-limpios, limpia a casi todos y $U_{PI}$ se pega a $U^{\max}$, ignorando lo
-difícil que es deducir sin conocer $Z$. Se ve en dos trazos:""")
+md(r"""¿Por qué $U_{PI}$ es floja? El adivino es demasiado fuerte: con presupuesto
+suficiente limpia a casi todos y la cota se pega a $U^{\max}$:""")
 
 code(r"""from augmented.baselines import u_max
 
@@ -276,8 +250,7 @@ ax.set_title('La hindsight corre hacia U_max; el hueco ámbar\nes lo que la pena
 ax.legend(fontsize=8)
 fig.tight_layout(); plt.show()""")
 
-md(r"""Y el resultado sobre las 106 instancias validadas (cero violaciones de
-$U_{pen} \ge$ OPT — el experimento se audita solo):""")
+md(r"""El resultado sobre 106 instancias (cero violaciones de $U_{pen} \ge$ OPT):""")
 
 code(r"""cert = pd.read_csv(os.path.join(DATA, 'certificates_small_n.csv'))
 tabla = (cert.groupby(['n', 'B', 'G'])[['true_ratio', 'cert_pi', 'cert_pen']]
@@ -304,34 +277,31 @@ ax.set_title('El apriete (segmento azul) y lo que sigue faltando\nhasta lo real 
 fig.tight_layout(); plt.show()
 print(tabla.round(3))""")
 
-md(r"""Tres lecturas. El greedy real está en 0.93–0.99 del óptimo pero lo
-demostrable ronda 0.7: **el cuello de botella es la demostración, no el
-algoritmo** — cada punto de apriete es valor que el greedy ya tenía y nadie
-podía reclamar. Segundo: la penalización funciona (+4 a +5 puntos), primera
-vez que algo aprieta la hindsight aquí. Tercero, lo mejor: el apriete vive
-entero en $B=2$ y muere en $B=3$ — calca la ley del lookahead (99% → 40% →
-16%): **la penalización con $\hat V$ miope es anticipación de un paso**.
+md(r"""Tres lecturas:
 
-Hubo además un fracaso instructivo: la $\hat V$ sofisticada (valor a futuro
-del propio greedy) certifica *peor* que el potencial simple, porque alimenta
-marginales al greedy como priors independientes y el adversario interno
-explota ese sesgo sistemáticamente. El independence gap atacando al
-certificado.
+1. El greedy real está en 0.93–0.99 del óptimo; lo demostrable ronda 0.7.
+   **El cuello de botella es la demostración, no el algoritmo.**
+2. La penalización funciona: +4 a +5 puntos, primera vez que algo aprieta la
+   hindsight en este problema.
+3. El apriete vive en $B=2$ y muere en $B=3$ — el mismo patrón que la ley
+   del lookahead (99% → 40% → 16%). **La multa miope es anticipación de un
+   paso.**
 
-> **Para discutir.** Todo apunta a que la $\hat V$ correcta debe ser (a)
-> insesgada donde el adversario mira y (b) de alcance creciente con el
-> horizonte. ¿Existe una familia con profundidad $d(B)$ cuyo problema interno
-> se descomponga, para dar el primer certificado apretado en $n=50$? ¿Cuál es
-> el análogo correcto de "profundidad" para una penalización?""")
+Un fracaso instructivo: la $\hat V$ sofisticada (el valor a futuro del
+greedy) certifica *peor* que la simple. Usa marginales como si fueran
+independientes, y el adivino explota ese sesgo. El independence gap atacando
+al certificado.
+
+> **Para discutir.** ¿Existe una $\hat V$ con profundidad $d(B)$ — insesgada
+> y con alcance creciente en el horizonte — cuyo problema interno se
+> descomponga? Sería el primer certificado apretado en $n=50$.""")
 
 # ===================================================================
 md(r"""## 3. El mapa con garantías
 
-Tus tres perillas en un solo objeto. Por cada punto $(B, \text{cap})$, dos
-números: la fracción del valor que es real (la curva de resolución — solo
-computable en $n$ chico porque necesita el óptimo) y la certificable a
-cualquier escala. La banda entre ambas es, literalmente, el programa de
-investigación dibujado.""")
+Tus tres perillas en un solo objeto. En cada punto $(B, \text{cap})$: la
+fracción real del valor (solo computable en $n$ chico) y la certificable a
+cualquier escala. La banda entre ambas es el programa de investigación.""")
 
 code(r"""cmap = pd.read_csv(os.path.join(DATA, 'certified_map.csv'))
 resumen = (cmap.groupby(['B', 'cap'])[['real_frac', 'cert_frac']]
@@ -340,23 +310,19 @@ print(resumen)
 from IPython.display import Image, display
 display(Image(filename=os.path.join(FIGS, 'certified_map.png')))""")
 
-md(r"""Dos datos que la figura deja ver. La fracción certificada crece con el
-horizonte (0.58 en $B=1$ → 0.85 en $B=3$): el certificado mejora justo donde
-el problema se pone interesante. Y en $B=3$ el canal de tres niveles
-certifica exactamente lo mismo que el conteo completo (0.85 en cap 2 y 3,
-contra 0.79 del binario): la versión certificada del 84.5% — **el canal
+md(r"""Dos datos: la fracción certificada crece con el horizonte (0.58 → 0.85), y
+en $B=3$ el canal de tres niveles certifica lo mismo que el conteo completo
+(0.85 vs 0.79 del binario). La versión certificada del 84.5%: **el canal
 barato no pierde nada demostrable**.
 
-> **Para discutir.** El panel que falta es $K$: con pools de traslape acotado,
-> ¿la banda se cierra (la inferencia se abarata y la cota se aprieta a la
-> vez) o se abre? Requiere el parámetro `pools` en el solver — está diseñado.""")
+> **Para discutir.** Falta el panel de $K$: con traslape acotado, ¿la banda
+> se cierra o se abre?""")
 
 # ===================================================================
 md(r"""## 4. La dirección: el cuarto eje
 
-Una sola imagen resume dónde vive cada línea de investigación: la escalera
-completa de una instancia, de la política más simple a la cota más floja.
-Cada hueco entre peldaños es una pregunta del programa.""")
+La escalera completa de una instancia, de la política más simple a la cota
+más floja. Cada hueco es una línea de investigación.""")
 
 code(r"""from augmented.baselines import u_single
 from augmented.classical_solver import solve_classical_dynamic
@@ -403,28 +369,21 @@ ax.set_title('La escalera completa (n=5, B=2, G=2): políticas (gris), el óptim
              'las cotas computables (azul/ámbar) — un hueco por línea de investigación', fontsize=10)
 fig.tight_layout(); plt.show()""")
 
-md(r"""El mapa dice cuándo la información vale, gobernado por horizonte, estructura
-y resolución. La dirección propia agrega el eje que el mapa no nombra:
-**cuánto de ese valor es reclamable y certificable con cómputo finito**. Con
-ese lente, D3 es el certificado mismo; D1 dice cuándo su capa de inferencia
-es computable (dureza #P, mixing — ahora sobre una cadena correcta); D2 es el
-certificado aplicado al canal; y el descubrimiento del horizonte reaparece
-del lado de las cotas en el patrón del apriete.
+md(r"""Tu mapa dice cuándo la información vale. La dirección propia agrega el eje
+que falta: **cuánto de ese valor se puede reclamar y certificar con cómputo
+finito**. Con ese lente, D3 es el certificado; D1 dice cuándo su inferencia
+es computable; D2 es el certificado aplicado al canal; y el horizonte
+reaparece en el patrón del apriete.
 
-En una frase: *el mapa dice cuándo contar vale; esta línea caracteriza cuánto
-de ese valor se puede reclamar y certificar con cómputo finito, como función
-de las tres perillas.*
-
-> **Para discutir.** ¿Es este el cuarto eje correcto del paquete, o ves una
-> forma mejor de colgarlo del mapa? ¿Y cuál de los tres huecos de la escalera
-> merece el teorema primero?""")
+> **Para discutir.** ¿Es este el cuarto eje correcto? ¿Cuál hueco de la
+> escalera merece el teorema primero?""")
 
 # ===================================================================
-md(r"""## 5. En la recámara: el motor vestido de producto
+md(r"""## 5. En la recámara: el motor como producto
 
-La traducción literal a evaluación de flotas de agentes de IA: cada corrida
-end-to-end toca varios componentes (un pool) y reporta cuántas fallas hubo,
-no cuáles (el conteo). Versión reducida de `demo_fleet_certification.py`:""")
+Evaluación de flotas de agentes de IA: cada corrida toca varios componentes
+(un pool) y reporta cuántas fallas, no cuáles (el conteo). Es el problema de
+la tesis sin traducir nada:""")
 
 code(r"""from augmented.demo_fleet_certification import (build_fleet, selector,
                                                 random_selector, mc_value,
@@ -452,23 +411,19 @@ ax.set_ylabel('valor esperado (flota n=50, B=10, G=5)')
 ax.set_title('Mismo presupuesto de evals, con y sin matemáticas', fontsize=10)
 fig.tight_layout(); plt.show()""")
 
-md(r"""El motor certifica ≥ ~77% del óptimo incalculable; el muestreo aleatorio con
-el mismo presupuesto se queda en ~46%. Y con la cota penalizada escalable,
-el mismo número sube sin cambiar el motor — ese es el punto: el certificado
-es a la vez el teorema y el producto.
+md(r"""Mismo presupuesto: el motor certifica ~77% del óptimo; el muestreo aleatorio,
+~46%. Con la cota penalizada escalable ese número sube sin cambiar el motor.
+El certificado es a la vez el teorema y el producto.
 
 ## 6. Tres preguntas para trabajar juntos
 
-1. **La $\hat V$ con profundidad $d(B)$.** Insesgada donde el adversario mira
-   y con alcance que crezca con el horizonte, con problema interno
-   descomponible. Premio: el primer certificado apretado en $n=50$ (hoy: 58%
-   con hindsight pura).
-2. **El conteo con ruido como cuarta perilla.** Si el test reporta $r$ con
-   error (el cycle threshold, el grader LLM), ¿cómo se degrada la escalera de
-   resolución? ¿Sobrevive el resultado del canal barato?
+1. **La $\hat V$ con profundidad $d(B)$.** Insesgada, de alcance creciente
+   con el horizonte, y con problema interno descomponible. Premio: el primer
+   certificado apretado en $n=50$ (hoy: 58%).
+2. **El conteo con ruido.** Si el test reporta $r$ con error (cycle threshold, grader
+   LLM), ¿sobrevive el resultado del canal barato? Cuarta perilla del mapa.
 3. **Mixing del Gibbs como función de $K$.** La cadena ya es válida; con
-   grado acotado, ¿la conductancia de la fibra descarta cuellos de botella y
-   el mixing es polinomial? Es el puente entre D1 y la capa de inferencia del
+   grado acotado, ¿el mixing es polinomial? El puente entre D1 y el
    certificado.""")
 
 # ===================================================================
