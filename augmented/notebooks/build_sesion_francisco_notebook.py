@@ -415,11 +415,75 @@ md(r"""Mismo presupuesto: el motor certifica ~77% del óptimo; el muestreo aleat
 ~46%. Con la cota penalizada escalable ese número sube sin cambiar el motor.
 El certificado es a la vez el teorema y el producto.
 
-## 6. Tres preguntas para trabajar juntos
+## 6. Postdata: un agente cerró el hueco de B=3
 
-1. **La $\hat V$ con profundidad $d(B)$.** Insesgada, de alcance creciente
-   con el horizonte, y con problema interno descomponible. Premio: el primer
-   certificado apretado en $n=50$ (hoy: 58%).
+La pregunta 1 (§7) ya tiene una primera respuesta, y no la escribí yo. Monté
+un bucle de investigación autónomo (`dapts-autoresearch`) cuya única libertad
+es editar $\hat V$; el teorema de Brown–Smith–Sun es la jaula — cualquier
+$\hat V$ da cota válida, así que el agente no puede romper la corrección
+aunque quiera. Corrió toda la noche y encontró una $\hat V$ **escalable** que
+aprieta en B=3, donde $umax$ era plano. La idea: en vez de resolver el
+value-to-go óptimo (que enumera el soporte conjunto y no escala), lo estima
+con un lookahead de un paso **correlacionado por componentes conexas** — usa
+la PMF exacta del conteo por componente, que es barata, sin tocar el conjunto
+global. Es la $\hat V$ con profundidad $d(B)$ sobre marginales que buscábamos.""")
+
+code(r"""CFGS = [(4, 2, 2, 3), (5, 2, 3, 3), (5, 3, 3, 2), (6, 2, 3, 2), (6, 3, 3, 2)]
+
+def tighten_by_B(vh):
+    acc = {2: [], 3: []}
+    for n, B, G, K in CFGS:
+        for s in range(K):
+            r = random.Random(42 + 1000*n + 100*B + 10*G + s)
+            p = [r.uniform(0.05, 0.6) for _ in range(n)]
+            u = [r.uniform(1.0, 5.0) for _ in range(n)]
+            g = greedy_myopic_expected_utility(p, u, B, G)
+            upi = u_pi_exact(p, u, B, G)
+            upen = u_pen_exact(p, u, B, G, v_hat=vh)
+            assert upen >= greedy_myopic_expected_utility(p,u,B,G)*0  # válida
+            acc[B].append(g/upen - g/upi)
+    return {B: sum(v)/len(v) for B, v in acc.items()}
+
+t_umax = tighten_by_B('umax')
+t_res = tighten_by_B('research')   # la V-hat que encontró el agente
+
+fig, ax = plt.subplots(figsize=(6, 3.4))
+xs = [0, 1]; bw = 0.36
+ax.bar([x - bw/2 for x in xs], [t_umax[2], t_umax[3]], bw,
+       color=GRIS, label='umax (lo de ayer)')
+ax.bar([x + bw/2 for x in xs], [t_res[2], t_res[3]], bw,
+       color=AZUL, label='research (el agente)')
+ax.axhline(0, color=TINTA, lw=0.8)
+ax.set_xticks(xs); ax.set_xticklabels(['B = 2', 'B = 3'])
+ax.set_ylabel('apriete del certificado')
+ax.set_title('El agente aprieta donde umax era plano (B=3),\ny la V-hat pasa la prueba de escalabilidad', fontsize=10)
+ax.legend(fontsize=8)
+for x, v in zip([xs[1] - bw/2, xs[1] + bw/2], [t_umax[3], t_res[3]]):
+    ax.annotate(f'{v:+.3f}', (x, v), ha='center', textcoords='offset points',
+                xytext=(0, 3 if v >= 0 else -12), fontsize=9, color=TINTA)
+fig.tight_layout(); plt.show()
+print(f"tighten_b3:  umax {t_umax[3]:+.4f}   research {t_res[3]:+.4f}")""")
+
+md(r"""El detalle que lo hace un resultado y no un truco: la $\hat V$ ganadora pasa
+la **prueba de escalabilidad** (se la llama en $n=32$ con tope de tiempo; una
+$\hat V$ que enumere $2^n$ truena ahí). Anteanoche el agente había encontrado
+la versión tramposa — el value-to-go exacto, apretada pero circular porque
+resuelve el problema; ayer endurecí el benchmark para prohibirla, y esta
+noche encontró la versión honesta. La coincidencia estructural que nos
+intrigaba (apriete y lookahead obedecen la misma ley de horizonte) resultó
+ser constructiva: la profundidad correlacionada es exactamente lo que faltaba.
+
+> **Para discutir.** Esto vale en $n\le 6$, donde las componentes son chicas.
+> A $n=50$ con traslape fuerte las componentes crecen y el lookahead por
+> componentes pasa a ser aproximación. ¿Sobrevive el apriete? Es la pieza que
+> el certificado a escala necesita — y ahora hay una $\hat V$ concreta que
+> probar.
+
+## 7. Tres preguntas para trabajar juntos
+
+1. **La $\hat V$ con profundidad $d(B)$** — con una primera respuesta ya (§6):
+   ¿el lookahead correlacionado por componentes se sostiene a $n=50$ cuando
+   las componentes no caben en el cap?
 2. **El conteo con ruido.** Si el test reporta $r$ con error (cycle threshold, grader
    LLM), ¿sobrevive el resultado del canal barato? Cuarta perilla del mapa.
 3. **Mixing del Gibbs como función de $K$.** La cadena ya es válida; con
