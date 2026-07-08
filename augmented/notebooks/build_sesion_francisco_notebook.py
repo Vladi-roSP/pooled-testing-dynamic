@@ -240,13 +240,13 @@ for Bx in Bs:
     curves['OPT'].append(o); curves['U_PI'].append(up); curves['U_max'].append(um)
 
 fig, ax = plt.subplots(figsize=(6, 3.2))
-ax.plot(Bs, curves['U_max'], ls=':', color=GRIS, label='U_max (información total)')
-ax.plot(Bs, curves['U_PI'], marker='s', ms=4, color=AMBAR, label='U_PI (hindsight)')
-ax.plot(Bs, curves['OPT'], marker='o', ms=4, color=TINTA, label='OPT (incalculable a escala)')
+ax.plot(Bs, curves['U_max'], ls=':', color=GRIS, label='U_max — tope absoluto')
+ax.plot(Bs, curves['U_PI'], marker='s', ms=4, color=AMBAR, label='U_PI — adivino que ve el futuro')
+ax.plot(Bs, curves['OPT'], marker='o', ms=4, color=TINTA, label='OPT — óptimo real (incalculable a escala)')
 ax.fill_between(Bs, curves['OPT'], curves['U_PI'], color=AMBAR, alpha=0.12)
 ax.set_xticks(Bs); ax.set_xlabel('presupuesto B')
 ax.set_ylabel('utilidad esperada')
-ax.set_title('La hindsight corre hacia U_max; el hueco ámbar\nes lo que la penalización debe recortar', fontsize=10)
+ax.set_title('Al crecer B, el adivino U_PI se aproxima al tope U_max;\nel hueco ámbar hasta el óptimo es lo que la penalización recorta', fontsize=10)
 ax.legend(fontsize=8)
 fig.tight_layout(); plt.show()""")
 
