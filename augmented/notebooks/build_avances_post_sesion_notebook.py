@@ -44,7 +44,9 @@ verificación de la fibra, y el encuadre de publicación.
 
 Este cuaderno regenera cada número; nada está escrito a mano.""")
 
-code(r"""import math
+code(r"""import os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(''))))
+import math
 import itertools
 import numpy as np
 import matplotlib.pyplot as plt
@@ -208,15 +210,200 @@ el resultado del extremo estático; aquí queda la instancia y la verificación.
 md(r"""## 2. Los regímenes tratables y un algoritmo eficiente
 
 El segundo frente: los regímenes donde la inferencia exacta —que en general es
-#P-hard— se vuelve tratable, y un algoritmo (DP) eficiente sobre ellos. Dos
-familias, ambas por la misma razón: el posterior factoriza cuando la estructura
-de traslape es simple.
+#P-hard— se vuelve tratable. Dos familias, ambas por la misma razón: el
+posterior factoriza cuando la estructura de traslape es simple. Abajo se
+construye cada una en chiquito, se verifica contra la fuerza bruta, y se escala
+a tamaños donde la fuerza bruta es físicamente imposible.
 
-La primera es **laminar**: pools anidados (cada par de pools es disjunto o uno
-contiene al otro). La segunda es **treewidth acotado** del hipergrafo de
-co-aparición en pruebas. En los dos casos el conteo total se reparte en
-componentes o bolsas de tamaño acotado y el posterior se computa en tiempo
-polinomial, en vez de enumerar $2^n$. Empíricamente el desempeño es bueno.
+**Laminar: cajas dentro de cajas.** Pools anidados (cada par es disjunto o uno
+contiene al otro). La gracia: los conteos anidados se *restan*. Si el pool
+grande $A$ reporta 5 infectados y su sub-pool $B$ reporta 2, entonces la capa
+$A\setminus B$ tiene exactamente $5-2=3$. Con todos los niveles testeados, cada
+capa queda con su conteo fijado y el problema se rompe en subproblemas
+independientes del tipo "exactamente $k$ infectados entre $m$ personas" — que
+se resuelve exacto con polinomios simétricos en $O(m\cdot k)$, sin enumerar
+$2^m$. (Si solo algunos niveles están testeados, la resta deja de fijar y se
+convierte en un DP sobre el árbol laminar; misma idea, un paso más.)""")
+
+code(r"""from augmented.core import mask_from_indices
+from augmented.bayesian import bayesian_update_by_counting
+import time
+
+def marginales_k_de_m(ps, k):
+    '''P(Z_i=1 | exactamente k infectados entre estas m personas), exacto en
+    O(m*k) via polinomios simetricos elementales (forward-backward) sobre las
+    ODDS r_i = p_i/q_i. Trabajar en odds cancela el factor comun prod(q) y
+    evita el underflow que mataria los pesos crudos con m grande
+    (0.5^2000 ~ 1e-602 no cabe en un float; las esym de odds con k chico si).
+    Formula: P(Z_i=1 | k de m) = r_i * e_{k-1}(r_(-i)) / e_k(r).'''
+    m = len(ps)
+    odds = [pi / (1.0 - pi) for pi in ps]
+    F = [[1.0]]                      # F[i][j] = e_j(odds de los primeros i)
+    for i in range(m):
+        prev = F[-1]
+        cur = [0.0] * (min(i + 1, k) + 1)
+        for j, v in enumerate(prev):
+            if j <= k:     cur[j] += v
+            if j + 1 <= k: cur[j + 1] += v * odds[i]
+        F.append(cur)
+    Bk = [None] * (m + 1)            # Bk[i][j] = e_j(odds de i..m-1)
+    Bk[m] = [1.0]
+    for i in range(m - 1, -1, -1):
+        nxt = Bk[i + 1]
+        cur = [0.0] * (min(m - i, k) + 1)
+        for j, v in enumerate(nxt):
+            if j <= k:     cur[j] += v
+            if j + 1 <= k: cur[j + 1] += v * odds[i]
+        Bk[i] = cur
+    Z = F[m][k]                      # e_k(todas las odds)
+    marg = []
+    for i in range(m):
+        acc = 0.0
+        for j, v in enumerate(F[i]):
+            jj = k - 1 - j
+            if 0 <= jj < len(Bk[i + 1]):
+                acc += v * Bk[i + 1][jj]
+        marg.append(odds[i] * acc / Z)
+    return marg
+
+# --- laminar en chiquito: n=12, A={0..11} r=5, B={0..5} r=2, C={0..2} r=1 ---
+import random as _r
+rng = _r.Random(3)
+n = 12
+p = [rng.uniform(0.2, 0.8) for _ in range(n)]
+history = ((mask_from_indices(range(12)), 5),
+           (mask_from_indices(range(6)), 2),
+           (mask_from_indices(range(3)), 1))
+
+# los conteos anidados se restan: capas C, B\C, A\B con conteos 1, 2-1=1, 5-2=3
+capas = [(list(range(0, 3)), 1), (list(range(3, 6)), 1), (list(range(6, 12)), 3)]
+t0 = time.perf_counter()
+marg_dp = [0.0] * n
+for inds, k in capas:
+    for i, v in zip(inds, marginales_k_de_m([p[i] for i in inds], k)):
+        marg_dp[i] = v
+t_dp = time.perf_counter() - t0
+
+t0 = time.perf_counter()
+marg_bf = bayesian_update_by_counting(p, history, n)   # fuerza bruta 2^12
+t_bf = time.perf_counter() - t0
+
+err = max(abs(a - b) for a, b in zip(marg_dp, marg_bf))
+assert err < 1e-9, f'laminar DP no coincide con fuerza bruta: {err}'
+print(f'laminar n=12: max|DP - fuerza bruta| = {err:.1e}  '
+      f'(DP {t_dp*1e3:.2f} ms, fuerza bruta {t_bf*1e3:.0f} ms)')
+print('marginales (primeras 6):', [round(x, 4) for x in marg_dp[:6]])""")
+
+code(r"""# --- el mismo régimen laminar a n = 6,000: la fuerza bruta necesitaría 2^6000 ---
+n_big = 6000
+rng = _r.Random(4)
+p_big = [rng.uniform(0.2, 0.8) for _ in range(n_big)]
+capas_big = [(list(range(0, 2000)), 3),        # capa interna: 3 infectados entre 2,000
+             (list(range(2000, 4000)), 2),
+             (list(range(4000, 6000)), 1)]
+t0 = time.perf_counter()
+marg_big = {}
+for inds, k in capas_big:
+    for i, v in zip(inds, marginales_k_de_m([p_big[i] for i in inds], k)):
+        marg_big[i] = v
+t_big = time.perf_counter() - t0
+chk = sum(marg_big[i] for i in range(2000))
+print(f'laminar n=6,000: marginales exactas en {t_big*1e3:.0f} ms '
+      f'(la enumeración sería 2^6000 ~ 10^1806)')
+print(f'consistencia: la capa interna suma E[infectados] = {chk:.6f} (debe ser 3)')""")
+
+md(r"""**Cadena de pools: el caso más simple de treewidth acotado.** Pools que se
+traslapan en cadena — cada uno comparte *una* persona con el siguiente:
+$\{0,1,2\}, \{2,3,4\}, \{4,5,6\}, \dots$ Para heredar todo lo aprendido de un
+pool al siguiente basta recordar el estado de la persona compartida — un bit.
+El posterior se computa con un barrido forward–backward sobre ese bit,
+exactamente como en los HMM (es la técnica de junction tree en su caso más
+chico). Costo lineal en el número de pools, en vez de $2^n$.""")
+
+code(r"""def cadena_marginales(p, rs):
+    '''Marginales exactas para pools en cadena {0,1,2},{2,3,4},... con conteos
+    rs. Forward-backward sobre el bit de la persona compartida.'''
+    m = len(rs)                       # pools; personas: 0..2m
+    w = lambda i, z: p[i] if z else 1 - p[i]
+
+    def T(i, s_prev, s):              # peso de transición del pool i>=1
+        mid = 2 * i + 1
+        acc = 0.0
+        for zm in (0, 1):
+            if s_prev + zm + s == rs[i]:
+                acc += w(mid, zm)
+        return acc * w(2 * i + 2, s)
+
+    fwd = [[0.0, 0.0] for _ in range(m)]
+    for z0 in (0, 1):                 # pool 0: personas 0,1 y frontera 2
+        for z1 in (0, 1):
+            for s in (0, 1):
+                if z0 + z1 + s == rs[0]:
+                    fwd[0][s] += w(0, z0) * w(1, z1) * w(2, s)
+    for i in range(1, m):
+        for s in (0, 1):
+            fwd[i][s] = sum(fwd[i - 1][sp] * T(i, sp, s) for sp in (0, 1))
+
+    bwd = [[1.0, 1.0] for _ in range(m)]
+    for i in range(m - 1, 0, -1):
+        for sp in (0, 1):
+            bwd[i - 1][sp] = sum(T(i, sp, s) * bwd[i][s] for s in (0, 1))
+    Z = sum(fwd[m - 1])
+
+    marg = [0.0] * (2 * m + 1)
+    for i in range(m):                # fronteras: personas 2i+2
+        marg[2 * i + 2] = fwd[i][1] * bwd[i][1] / Z
+    for i in range(1, m):             # medios: personas 2i+1
+        acc = 0.0
+        for sp in (0, 1):
+            for s in (0, 1):
+                if sp + 1 + s == rs[i]:
+                    acc += fwd[i - 1][sp] * p[2 * i + 1] * w(2 * i + 2, s) * bwd[i][s]
+        marg[2 * i + 1] = acc / Z
+    for persona in (0, 1):            # personas 0 y 1 del pool 0
+        acc = 0.0
+        otra = 1 - persona
+        for zo in (0, 1):
+            for s in (0, 1):
+                if 1 + zo + s == rs[0]:
+                    acc += w(persona, 1) * w(otra, zo) * w(2, s) * bwd[0][s]
+        marg[persona] = acc / Z
+    return marg
+
+# --- verificación contra fuerza bruta: 6 pools, n=13 ---
+m, n = 6, 13
+rng = _r.Random(5)
+p = [rng.uniform(0.2, 0.8) for _ in range(n)]
+z_real = [1 if rng.random() < p[i] else 0 for i in range(n)]
+pools = [list(range(2 * i, 2 * i + 3)) for i in range(m)]
+rs = [sum(z_real[j] for j in pool) for pool in pools]
+history = tuple((mask_from_indices(pool), r) for pool, r in zip(pools, rs))
+
+marg_dp = cadena_marginales(p, rs)
+marg_bf = bayesian_update_by_counting(p, history, n)
+err = max(abs(a - b) for a, b in zip(marg_dp, marg_bf))
+assert err < 1e-9, f'cadena DP no coincide: {err}'
+print(f'cadena de {m} pools (n={n}): max|DP - fuerza bruta| = {err:.1e}')
+
+# --- y a escala: 200 pools solapados, n=401 ---
+m2 = 200; n2 = 2 * m2 + 1
+rng = _r.Random(6)
+p2 = [rng.uniform(0.2, 0.8) for _ in range(n2)]
+z2 = [1 if rng.random() < p2[i] else 0 for i in range(n2)]
+rs2 = [z2[2*i] + z2[2*i+1] + z2[2*i+2] for i in range(m2)]
+t0 = time.perf_counter()
+marg2 = cadena_marginales(p2, rs2)
+t2 = time.perf_counter() - t0
+print(f'cadena de {m2} pools solapados (n={n2}): marginales exactas en '
+      f'{t2*1e3:.1f} ms (la enumeración sería 2^{n2})')""")
+
+md(r"""**Dónde encaja esto.** El código de producción (`bayesian.py`) ya explota el
+primer peldaño de esta escalera — componentes disjuntas —; laminar y cadena son
+los dos peldaños siguientes, y el treewidth acotado general es la misma idea con
+un separador de más de un bit. El frente del paper es empaquetar esta inferencia
+dentro del loop de decisión (greedy y DP) y medirla; y la conexión con la
+perilla $K$ es directa: traslape acotado es justo lo que mantiene chicos a los
+separadores.
 
 El paper mandable es la terna: el ejemplo de separación de la sección 1, este
 algoritmo eficiente sobre los regímenes tratables, y una columna empírica.""")
