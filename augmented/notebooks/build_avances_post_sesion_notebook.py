@@ -97,18 +97,31 @@ $g\,q^{g-1}\le 1$, y para $q<1/2$, $g\ge 2$ eso se cumple siempre
 
 $$U^{\text{est}} = B\,u\,q.$$
 
+(El argumento cubre también diseños estáticos con solape, por cota de unión:
+$\sum_i P(i \text{ acreditado}) \le \sum_t |t|\,q^{|t|} \le B\,q$, usando la
+misma desigualdad $g\,q^{g}\le q$ por prueba.)
+
 **Dinámico aumentado.** Con el presupuesto $B=k+\log_2 G$ se hacen $k$ pruebas
 sobre $k$ grupos disjuntos de $G$ personas — cubren $kG$ en total —, y si un
 grupo reporta al menos un sano, se aísla con una búsqueda binaria de conteo en
-$\log_2 G$ pruebas. La búsqueda encuentra a un sano con certeza (invariante: un
-bloque cuyo conteo de infectados es menor que su tamaño contiene al menos un
-sano). El esquema acredita a lo más una persona, así que su utilidad es
-exactamente
+$\log_2 G$ pruebas (invariante: un bloque cuyo conteo de infectados es menor
+que su tamaño contiene al menos un sano). Cuando hay algún sano entre las $kG$
+personas, la búsqueda garantiza acreditar al menos a uno — y a veces a más: un
+bloque testeado con conteo cero acredita a todos sus miembros. La utilidad del
+esquema es entonces al menos
 
-$$U^{\text{din}} = u\,\bigl(1-(1-q)^{kG}\bigr), \qquad kG=(B-\log_2 G)\,G,$$
+$$U^{\text{din}} \ge u\,\bigl(1-(1-q)^{kG}\bigr), \qquad kG=(B-\log_2 G)\,G,$$
 
-una cota inferior del óptimo dinámico (el óptimo puede además certificar gratis
-a los $G$ miembros de un grupo que salga con conteo cero).""")
+cota inferior del óptimo dinámico (que además puede certificar gratis a los
+$G$ miembros de un grupo inicial con conteo cero).
+
+Un detalle de contabilidad, verificado por enumeración: si acreditar exige
+literalmente pertenecer a un pool testeado con conteo cero, el último paso de
+la búsqueda puede identificar al sano por descarte sin haberlo testeado
+(ocurre en $\sim 1/3$ de los patrones con $G=16$) y acreditarlo cuesta una
+prueba extra. Basta tomar $B = k + \log_2 G + 1$, o la convención natural de
+que quedar probado sano por deducción también acredita. Nada cualitativo
+cambia.""")
 
 code(r"""# instancia ancla: prevalencia alta (q=0.1), grupos de 16, presupuesto 6
 q, G, B = 0.1, 16, 6
@@ -146,7 +159,7 @@ ax1.plot(Bs, din, marker='o', ms=4, color=AZUL, label='dinámico aumentado  1-(1
 ax1.fill_between(Bs, est, din, where=[d > e for e, d in zip(est, din)],
                  color=AZUL, alpha=0.12)
 ax1.axhline(1.0, color=TINTA, ls=':', lw=0.8)
-ax1.annotate('tope u: el esquema simple\nhalla a lo más un sano',
+ax1.annotate('tope u: la cota solo cuenta\nal sano garantizado',
              (Bs[0], 1.0), textcoords='offset points', xytext=(2, 6),
              ha='left', va='bottom', fontsize=7.5, color=TINTA)
 ax1.set_xlabel('presupuesto B'); ax1.set_ylabel('utilidad esperada / u')
@@ -180,8 +193,8 @@ md(r"""Dos lecturas. La separación es fuerte con **prevalencia alta** ($q$
 pequeño) y **presupuesto moderado**: ahí encontrar a un sano raro es caro
 individualmente —el estático rinde solo $B\,q$—, pero barato con conteo, que
 permite hacer búsqueda binaria de la aguja en el pajar. Y hay un cruce honesto:
-como el esquema simple encuentra a lo más un sano, su utilidad topa en $u$,
-mientras el estático crece lineal; para $B\gtrsim 1/q$ el estático lo rebasa.
+la cota solo cuenta al sano garantizado, así que topa en $u$, mientras el
+estático crece lineal; para $B\gtrsim 1/q$ el estático rebasa a la cota.
 La ventana de victoria es $1+\log_2 G \le B < 1/q$.
 
 Refinamiento (para el apéndice): eligiendo $G$ óptimo la cobertura llega a
@@ -254,9 +267,10 @@ md(r"""## 5. Encuadre para publicar
 Del consejo de la sesión, cuatro reglas:
 
 1. No mover dos variables a la vez. El beneficio tiene dos fuentes —ser dinámico
-   y ser aumentado—; el ejemplo de la sección 1 aísla la del conteo (compara
-   dinámico-aumentado contra el óptimo estático), que es lo que se quiere
-   atribuir.
+   y ser aumentado—; el ejemplo de la sección 1 mueve las dos juntas contra el
+   mejor estático, que es la separación pedida. Para atribuir cuánto pone cada
+   palanca, la comparación intermedia es el óptimo dinámico *binario* (donde la
+   búsqueda de sanos por conteo no está disponible): queda como celda pendiente.
 2. La dureza #P del posterior y la enumeración de la fibra van como trabajo
    futuro o apéndice, no en la línea principal.
 3. Lo puramente dinámico (sin conteo) se refiere al trabajo previo del grupo.
