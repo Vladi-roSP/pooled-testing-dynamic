@@ -409,15 +409,146 @@ El paper mandable es la terna: el ejemplo de separación de la sección 1, este
 algoritmo eficiente sobre los regímenes tratables, y una columna empírica.""")
 
 # ===================================================================
-md(r"""## 3. El modelo realista de pruebas (rama paralela)
+md(r"""## 3. El modelo realista de pruebas: ¿sobrevive la separación al ruido?
 
-Sin urgencia, pero es lo que vuelve el trabajo aplicable: hoy el modelo idealiza
-el conteo como exacto. En una prueba real —qPCR, biomarcadores— la lectura es
-ruidosa: en vez de un número, la prueba devuelve una *distribución posterior*
-sobre el conteo. La pregunta es si la separación de la sección 1 sobrevive a ese
-ruido. Si sobrevive, el resultado deja de ser un juguete y se vuelve una
-recomendación de diseño para tamizaje. Francisco intentará compartir un artículo
-de biomarcadores para calibrar el modelo de ruido.""")
+Hoy el modelo idealiza el conteo como exacto. Una prueba real —qPCR,
+biomarcadores— lo entrega con ruido. Hay cuatro modelos posibles (bit-flip,
+conteo gaussiano con umbral, evidencia suave tipo SPRT, y el mecanicista de
+carga viral; ver `paper/modelo_realista_pruebas.md`). Aquí se hace ejecutable
+el segundo, el que huele a qPCR: el conteo se observa con ruido gaussiano de
+desviación σ.""")
+
+md(r"""**Intuición.** La estrategia dinámica de la §1 nunca lee el conteo exacto:
+el binary search solo pregunta un bit por paso, "¿este bloque está saturado
+—todos infectados— o no?". Y esa discriminación es fácil. Piensa en un bloque
+de 4 personas donde 3 están infectadas: el conteo verdadero es 3 (hay un sano)
+y la saturación sería 4. Distinguir 3 de 4 contra un ruido de desviación σ es
+distinguir *una persona* del ruido. Mientras σ sea chico frente a una persona,
+el bit es confiable — sin importar el tamaño del bloque, porque el gap siempre
+es de uno. Por eso la separación debería aguantar bastante ruido antes de
+caerse.""")
+
+md(r"""**Afirmación.** Con umbral a la mitad, el error por paso es
+$\varepsilon(\sigma)=\Phi(-1/2\sigma)$, y la separación de la §1 sobrevive hasta
+un umbral σ\*. La utilidad real (simulada) del esquema ruidoso queda por encima
+de la cota conservadora "todos los pasos correctos", y el precio del ruido no es
+solo perder utilidad: aparece el *falso-limpio*, certificar sano a un infectado.""")
+
+code(r"""from statistics import NormalDist
+Phi = NormalDist().cdf
+
+def eps_por_paso(sigma):
+    '''P(equivocar la decisión saturado/no): umbral a h-0.5 entre h y h-1,
+    gap de una persona, ruido sigma. Independiente del tamaño del bloque.'''
+    return 0.0 if sigma <= 0 else Phi(-0.5 / sigma)
+
+def _busca_ruidosa(grupo, sigma, rng):
+    '''grupo: lista 0/1 (1=infectado). Binary search de conteo con ruido.
+    Se entra solo si el conteo ruidoso del grupo < |grupo|-0.5. Devuelve el
+    índice certificado (o None si el grupo se leyó saturado y no se entró).'''
+    n = len(grupo)
+    if sum(grupo) + rng.gauss(0, sigma) > n - 0.5:
+        return None
+    block = list(range(n))
+    while len(block) > 1:
+        half = len(block) // 2
+        L = block[:half]
+        if sum(grupo[i] for i in L) + rng.gauss(0, sigma) < len(L) - 0.5:
+            block = L
+        else:
+            block = block[half:]
+    return block[0]
+
+def dinamico_ruidoso_mc(B, G, q, sigma, sims=20000, seed=0):
+    '''Utilidad/u y tasa de falso-limpio por Monte Carlo. Utilidad = P(certificar
+    a un sano de verdad). Falso-limpio = P(el certificado esté infectado | se
+    certificó a alguien).'''
+    logG = round(math.log2(G)); k = B - logG
+    if k < 1:
+        return None, None
+    rng = random.Random(seed)
+    exitos = certificados = falsos = 0
+    for _ in range(sims):
+        acreditado = False
+        for _g in range(k):
+            grupo = [0 if rng.random() < q else 1 for _ in range(G)]  # 0=sano
+            x = _busca_ruidosa(grupo, sigma, rng)
+            if x is None:
+                continue
+            certificados += 1
+            if grupo[x] == 1:
+                falsos += 1
+            elif not acreditado:
+                exitos += 1; acreditado = True; break
+    return exitos / sims, (falsos / certificados if certificados else 0.0)
+
+import random
+q, G, B = 0.1, 16, 6
+logG = round(math.log2(G))
+sin_ruido = util_dinamico(B, G, q)[0]
+est = util_estatico(B, q)
+
+# autoverificación: (a) sin ruido recupera la §1; (b) la cota conservadora
+# "todos los pasos correctos" nunca excede la verdad simulada.
+mc0, _ = dinamico_ruidoso_mc(B, G, q, 0.0, sims=20000, seed=1)
+assert abs(mc0 - sin_ruido) < 0.01, f'sigma=0 no recupera la §1: {mc0} vs {sin_ruido}'
+for s in (0.2, 0.3, 0.5):
+    mc, _ = dinamico_ruidoso_mc(B, G, q, s, sims=20000, seed=1)
+    cota = sin_ruido * (1 - eps_por_paso(s)) ** (logG + 1)
+    assert cota <= mc + 0.02, f'la cota conservadora excede la verdad en sigma={s}'
+print('autoverificación OK: sigma=0 recupera la §1; la cota conservadora <= verdad MC')
+print(f'estático={est:.3f}  dinámico sin ruido={sin_ruido:.3f}')
+for s in (0.0, 0.2, 0.3, 0.5, 0.8):
+    mc, falso = dinamico_ruidoso_mc(B, G, q, s, sims=20000, seed=1)
+    print(f'  sigma={s}: dinámico MC={mc:.3f}  falso-limpio={falso:.3f}  '
+          f'eps/paso={eps_por_paso(s):.3f}')""")
+
+code(r"""# figura: la separación contra el ruido (izq) y el precio en riesgo (der)
+sigmas = np.linspace(0.0, 1.1, 23)
+util = [dinamico_ruidoso_mc(B, G, q, float(s), sims=12000, seed=2)[0] for s in sigmas]
+falso = [dinamico_ruidoso_mc(B, G, q, float(s), sims=12000, seed=2)[1] for s in sigmas]
+cota = [sin_ruido * (1 - eps_por_paso(float(s))) ** (logG + 1) for s in sigmas]
+# umbral sigma*: donde la utilidad dinámica cruza el estático
+sig_star = next((float(s) for s, m in zip(sigmas, util) if m < est), None)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 3.6))
+ax1.axhline(est, color=GRIS, lw=1.6, label='estático (individual)')
+ax1.plot(sigmas, util, marker='o', ms=3, color=AZUL, label='dinámico con ruido (simulado)')
+ax1.plot(sigmas, cota, ls=':', color=TINTA, lw=1, label='cota conservadora (todos los pasos)')
+ax1.fill_between(sigmas, est, util, where=[u > est for u in util], color=AZUL, alpha=0.12)
+if sig_star is not None:
+    ax1.axvline(sig_star, color=AMBAR, ls='--', lw=1.2)
+    ax1.annotate(f'σ* ≈ {sig_star:.2f}', (sig_star, est), textcoords='offset points',
+                 xytext=(4, 30), fontsize=8, color=AMBAR)
+ax1.set_xlabel('ruido en el conteo  σ'); ax1.set_ylabel('utilidad esperada / u')
+ax1.set_title('La separación aguanta ruido hasta σ*', fontsize=10)
+ax1.legend(fontsize=8, loc='upper right')
+
+ax2.plot(sigmas, falso, marker='s', ms=3, color=AMBAR)
+ax2.set_xlabel('ruido en el conteo  σ')
+ax2.set_ylabel('tasa de falso-limpio')
+ax2.set_title('El precio en riesgo: certificar sano a un infectado', fontsize=10)
+ax2.set_ylim(-0.02, max(0.05, max(falso) * 1.1))
+fig.tight_layout(); plt.show()
+print(f'umbral de utilidad: σ* ≈ {sig_star:.2f} '
+      f'(más de media persona de ruido antes de perder la ventaja)')""")
+
+md(r"""**Lectura.** La separación es robusta: la ventaja en utilidad sobrevive
+hasta σ\* ≈ 0.65, más de media persona de ruido en el conteo. La razón es de
+diseño —el esquema solo necesita un bit por paso, no el conteo fino—, y por eso
+la cota conservadora (que exige acertar todos los pasos) queda muy por debajo de
+la utilidad real: los errores a menudo se recuperan. Pero el ruido cobra un
+segundo precio que la utilidad media esconde: el falso-limpio crece rápido —a
+σ = 0.3 ya certifica a un infectado ~15% de las veces, aun cuando en media
+sigue ganando—. Para tamizaje, ese es el error peligroso, y reconecta con el
+objetivo de riesgo/CVaR de trabajo previo.""")
+
+md(r"""**Para discutir.** ¿El objetivo correcto bajo ruido es la utilidad media o
+la utilidad *segura* (con el falso-limpio acotado)? Y la perilla que aparece
+sola: con re-medición (volver a probar el mismo pool para bajar σ efectivo, la
+política SPRT del modelo C), ¿se puede empujar σ\* hacia arriba y el
+falso-limpio hacia abajo a la vez, o hay un trade-off duro entre cobertura y
+precisión?""")
 
 # ===================================================================
 md(r"""## 4. Verificación de la fibra
