@@ -1,0 +1,585 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{microtype}
+\hypersetup{
+  hidelinks,
+  pdftitle={Dynamic Welfare-Maximizing Group Counting with Count-Valued Outcomes},
+  pdfauthor={Vladimir; Hector; Francisco Marmolejo-Cossio}
+}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+
+\title{\textbf{Dynamic Welfare-Maximizing Group Counting with Count-Valued Outcomes:}\\
+A Separation, Tractable Regimes, and Empirical Evidence}
+\author{Vladimir \and Hector \and Francisco Marmolejo-Coss\'io}
+\date{Preliminary draft --- July 9, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A welfare-maximizing testing planner uses a limited budget of pooled tests to
+certify healthy individuals. Prior work studies static designs and dynamic
+policies with binary outcomes. We study a richer dynamic model in which a test
+reports the exact number of infected samples in its pool. The paper has three
+parts. First, we give a closed-form separation: in a homogeneous high-prevalence
+population, the best static design earns $Buq$, whereas a dynamic count-valued
+strategy searches $kG$ people and earns at least
+$u[1-(1-q)^{kG}]$ under the same strict hard-clearing objective. Because the
+comparison changes both adaptivity and outcome resolution, we state it only as
+a joint separation.
+Second, we give efficient exact posterior algorithms for structured histories:
+componentwise inference for disconnected test hypergraphs, an
+elementary-symmetric-polynomial algorithm for fully observed laminar layers,
+and a linear-time forward--backward algorithm for an acyclic chain with
+one-bit separators. Third, exact experiments show mean relative improvements
+of $0.63\%$, $3.97\%$, and $5.07\%$ on three small-instance regimes. A separate
+resolution experiment finds that the
+three-level channel $\{0,1,\geq2\}$ captures $84.5\%$ of the full counting gain
+on a selected $N=6$ instance. Together, these results identify when richer
+outcomes improve welfare, when exact inference remains tractable, and where the
+present analysis stops.
+\end{abstract}
+
+\section{Introduction}
+
+Imagine a planner facing 32 people in a high-prevalence population. Each person
+is healthy with probability $q=0.05$, a healthy certification is worth $u$, and
+the planner has seven tests. A fixed binary design does best by testing seven
+people individually, for expected welfare $7uq=0.35u$. A count-valued policy can
+instead test two disjoint pools of 16. If either pool contains a healthy person,
+four count-guided splits isolate one such person, and a final singleton test
+certifies that person under the strict hard-clearing rule. This policy earns at
+least
+\[
+  u\bigl[1-(1-0.05)^{32}\bigr] \approx 0.806u.
+\]
+The mechanism is a counting argument. Individual tests inspect seven possible
+healthy people; count feedback turns the remaining tests into a search over 32.
+
+This example motivates dynamic welfare-maximizing group counting. A planner has
+a heterogeneous population, a test budget, and a physical pool-size limit.
+Welfare is earned only for people placed in a pool observed to contain no
+infected samples. Static welfare-maximizing pooled testing fixes every pool in
+advance \cite{finster2023}. Dynamic binary testing chooses the next pool after
+observing whether each earlier pool was all-clear \cite{lopez2026}. We ask what
+becomes possible when the observation is the full count of infected samples.
+
+Count-valued observations are established in quantitative group testing, where
+the usual objective is recovery with as few tests as possible
+\cite{karimi2019}. Semi-quantitative group testing similarly replaces a binary
+result with a small number of qPCR-derived bins \cite{nambiar2023}. Our novelty
+is not the count channel itself. It is the welfare objective under strict hard
+clearing, the separation from fixed designs, and the use of structured
+count-posterior inference inside a dynamic decision problem.
+
+The example changes two ingredients at once: the policy becomes adaptive and
+the outcome becomes more informative. It therefore proves a joint separation,
+not a value-of-counting result in isolation. The unresolved benchmark is the
+optimal dynamic binary policy on the same homogeneous family; solving it would
+separate the gains from adaptivity and resolution.
+
+We make three contributions.
+
+\begin{enumerate}
+  \item We prove a closed-form joint separation under strict hard clearing,
+  including the final certification test that the reward definition requires.
+  \item We give exact posterior algorithms for verified tractable structures:
+  disconnected components, fully observed laminar layers, and an acyclic
+  one-bit-separator chain. These algorithms expose the structural reason exact
+  inference can scale without enumerating all $2^N$ latent profiles.
+  \item We consolidate two empirical views. A hierarchy experiment measures the
+  dynamic count-versus-binary gap, while a resolution curve measures how much
+  of that gap is captured by intermediate count channels.
+\end{enumerate}
+
+We keep the main text focused on this separation--inference--evidence
+connection. Results specific to dynamic binary testing are inherited from the
+predecessor study \cite{lopez2026}; posterior complexity, exact fiber
+enumeration, and unrestricted sampling on count fibers are discussed only in
+Appendix~\ref{app:complexity} or left for future work.
+
+\section{Model and Comparison Classes}
+
+There are $N$ individuals. Individual $i$ has utility $u_i\geq0$ and an
+independent latent infection state $Z_i\sim\mathrm{Bernoulli}(p_i)$. Write
+$q_i=1-p_i$ for the probability that $i$ is healthy. A test may contain at most
+$G$ individuals, and the planner may perform at most $B$ tests.
+
+For a pool $t\subseteq[N]$, the count-valued outcome is
+\[
+  r(t,Z)=\sum_{i\in t} Z_i.
+\]
+The corresponding binary outcome is $\mathbf{1}[r(t,Z)>0]$. The count channel
+refines the binary channel: the binary result can be recovered from the count,
+but not conversely.
+
+A policy produces a history
+$h_B=((t_1,r_1),\ldots,(t_B,r_B))$. Under \emph{strict hard clearing}, welfare is
+credited only after a person belongs to an actually tested zero-count pool:
+\[
+  U(h_B,Z)=\sum_{i=1}^N u_i
+  \mathbf{1}\!\left[\exists j\leq B:\ i\in t_j,\ r_j=0\right].
+\]
+Deduction alone is not rewarded. A policy that infers a person is healthy must
+still place that person in a zero-count test to collect the utility.
+
+We compare three classes.
+
+\begin{definition}[Static binary design]
+A static binary design fixes all $B$ pools before any outcome is observed.
+Because welfare depends only on zero versus nonzero outcomes, additional
+positive-count resolution cannot change the value of a fixed design.
+\end{definition}
+
+\begin{definition}[Dynamic binary policy]
+A dynamic binary policy chooses $t_j$ as a function of the previous pools and
+binary outcomes $\mathbf{1}[r_\ell>0]$, $\ell<j$.
+\end{definition}
+
+\begin{definition}[Dynamic count-valued policy]
+A dynamic count-valued policy chooses $t_j$ as a function of the previous pools
+and exact outcomes $r_\ell$, $\ell<j$.
+\end{definition}
+
+Let $\mathcal U^{\mathrm{stat}}$, $\mathcal U^{\mathrm{dyn,bin}}$, and
+$\mathcal U^{\mathrm{dyn,count}}$ denote the optimal expected welfare in these
+classes. Since a dynamic policy can ignore its history and a count policy can
+coarsen its observations,
+\[
+  \mathcal U^{\mathrm{stat}}
+  \leq \mathcal U^{\mathrm{dyn,bin}}
+  \leq \mathcal U^{\mathrm{dyn,count}}.
+\]
+The hierarchy is definitional. The size of either gap is a substantive
+question.
+
+\section{A Separation for Dynamic Count-Valued Testing}
+\label{sec:separation}
+
+We now formalize the example from the introduction. Consider a homogeneous
+population with common utility $u>0$ and common healthy probability
+$0<q<1/2$. The population is otherwise exchangeable.
+
+\begin{lemma}[Static optimum]
+\label{lem:static}
+For the homogeneous instance above, if $N\geq B$, the optimal static design
+under strict hard clearing has value
+\[
+  \mathcal U^{\mathrm{stat}}=Buq.
+\]
+This remains true when the fixed pools may overlap.
+\end{lemma}
+
+\begin{proof}
+A pool of size $g$ is all-clear with probability $q^g$ and then credits $gu$,
+so its expected contribution is $ugq^g$. For $g\geq1$ and $q<1/2$,
+\[
+  gq^{g-1}\leq \frac{g}{2^{g-1}}\leq1,
+\]
+and hence $ugq^g\leq uq$. Summing over $B$ tests gives an upper bound $Buq$ for
+disjoint pools.
+
+For overlapping pools, write the welfare as a sum over individuals and use a
+union bound on the events that certify each individual. Reversing the order of
+summation again bounds the expected welfare contributed by each test by
+$ugq^g\leq uq$. Thus overlap cannot exceed $Buq$. Testing $B$ distinct
+individuals attains the bound.
+\end{proof}
+
+\begin{theorem}[Joint static-binary versus dynamic-count separation]
+\label{thm:separation}
+Let $G$ be a power of two, let $0<q<1/2$, and let
+\[
+  B=k+\log_2G+1
+\]
+for an integer $k\geq1$. If $N\geq\max\{B,kG\}$, then
+\[
+  \mathcal U^{\mathrm{dyn,count}}
+  \geq u\left[1-(1-q)^{kG}\right].
+\]
+Consequently, whenever
+\[
+  Bq<1-(1-q)^{kG},
+\]
+the dynamic count-valued policy strictly outperforms every static design.
+\end{theorem}
+
+\begin{proof}
+Use the first $k$ tests on $k$ disjoint pools of size $G$. If every person in
+those pools is infected, the construction earns nothing. Otherwise at least one
+tested pool has count strictly below its size and therefore contains a healthy
+person.
+
+Maintain a block known to contain at least one healthy person. Split it into two
+equal halves and test one half. If its infected count is smaller than its size,
+keep that half. Otherwise it is entirely infected, so keep the other half.
+After $\log_2G$ tests, the maintained block is a singleton known to be healthy.
+The last test places this singleton in an observed zero-count pool, which is
+necessary under strict hard clearing.
+
+The policy certifies at least one healthy person exactly on the event that the
+initial $kG$ people contain one. That event has probability
+$1-(1-q)^{kG}$.
+\end{proof}
+
+For $(q,G,k)=(0.05,16,2)$, the budget is $B=7$. Lemma~\ref{lem:static}
+gives $0.35u$, while Theorem~\ref{thm:separation} gives $0.806u$. The lower
+bound counts only one certified person, although zero-count pools encountered
+along the way may certify more.
+
+For fixed $B$ and power-of-two $G$, strict clearing gives
+$kG=(B-\log_2G-1)G$. Equivalently, $G=2^{B-k-1}$, so integer $k\geq1$ gives
+$kG=k2^{B-k-1}$. The maximum is $2^{B-2}$, attained at $k=1$ and also at
+$k=2$ whenever that choice is feasible. The optimization sharpens the
+construction but is not needed for the separation.
+
+\section{Efficient Exact Inference in Structured Regimes}
+\label{sec:structured}
+
+A dynamic policy must update beliefs after observing counts. Unrestricted
+histories couple many latent states, but simple overlap structure produces small
+separators. The algorithms below compute exact posterior marginals without
+enumerating every global profile. They are inference algorithms; integrating
+each representation into a globally optimal large-scale decision policy is a
+separate problem.
+
+\subsection{Disconnected components}
+
+Form a bipartite incidence graph between individuals and previously tested
+pools. If this graph has disconnected components, the posterior factorizes
+across them because the prior is independent and every count constraint lies
+inside one component.
+
+\begin{proposition}[Componentwise exact inference]
+If every tested connected component contains at most $c$ individuals, exact
+posterior marginals can be computed in
+\[
+  O\!\left(N+\sum_C 2^{|C|}(|C|+|h_C|)\right),
+\]
+where $h_C$ is the set of count constraints in component $C$. Thus the
+calculation is linear in the number of components for fixed $c$, rather than
+exponential in the full population size.
+\end{proposition}
+
+\begin{proof}
+The likelihood indicator factors by component, as does the independent prior.
+Enumerate feasible profiles separately within each component and normalize
+locally. Products of the local normalizers recover the global normalizer, while
+a marginal depends only on its own component.
+\end{proof}
+
+This decomposition is effective when adaptive tests form many small
+disconnected regions. It provides exact inference within each region, but does
+not imply global optimality of a greedy pool-selection rule.
+
+\subsection{Fully observed laminar layers}
+
+Suppose the tested pools form a nested hierarchy and every relevant level has
+been observed. Subtracting child counts from parent counts fixes an exact count
+inside each disjoint layer. For example, if $B\subset A$, with counts two and
+five, then $A\setminus B$ contains exactly three infected individuals.
+
+Consider one layer $L$ of size $m$ with observed infected count $d$. For
+$0<p_i<1$, define odds $w_i=p_i/(1-p_i)$ and let $e_d(w_L)$ be the elementary
+symmetric polynomial of degree $d$. When $d\geq1$, conditioning on
+$\sum_{i\in L}Z_i=d$ gives
+\[
+  \Pr(Z_i=1\mid {\textstyle\sum_{j\in L}} Z_j=d)
+  =\frac{w_i\,e_{d-1}(w_{L\setminus\{i\}})}{e_d(w_L)}.
+\]
+When $d=0$, every marginal in the layer is zero. Deterministic priors are removed
+and their contribution is subtracted from $d$ before applying the formula.
+Prefix and suffix recursions compute all required symmetric polynomials and all
+$m$ marginals in $O(m(d+1))$ time. Each laminar layer is then solved independently.
+
+\begin{proposition}[Fully observed laminar inference]
+When nested observations determine disjoint layers $L_1,\ldots,L_s$ and their
+counts $d_1,\ldots,d_s$, exact posterior marginals are computable in
+\[
+  O\!\left(\sum_{\ell=1}^s |L_\ell|(d_\ell+1)\right)
+\]
+time and $O(\max_\ell |L_\ell|(d_\ell+1))$ working memory.
+\end{proposition}
+
+The proposition applies only when every layer count is determined. Partially
+observed laminar trees require message passing over unresolved parent counts,
+which is outside the present algorithmic scope.
+
+\subsection{An acyclic one-bit-separator chain}
+
+Now consider the overlapping chain
+\[
+  \{0,1,2\},\ \{2,3,4\},\ \{4,5,6\},\ldots.
+\]
+Adjacent factors share one person, so a message needs to remember only one
+binary state. A forward message $\alpha_j(s)$ stores the unnormalized mass of
+all assignments through pool $j$ whose right boundary has state $s\in\{0,1\}$.
+The transition sums over the one new interior state subject to the observed
+count. A backward pass yields every boundary and interior marginal.
+
+\begin{proposition}[Exact chain inference]
+For $m$ size-three pools arranged as above, all posterior marginals can be
+computed exactly in $O(m)$ time and $O(m)$ memory.
+\end{proposition}
+
+This is an acyclic factor graph with a one-bit separator. Its primal graph has
+treewidth two, so calling it simply a treewidth-one model would be ambiguous.
+More generally, junction-tree inference is polynomial in instance size at
+fixed separator width and exponential in that width and the relevant factor
+domain \cite{lauritzen1988}. Our prototype implementation covers this chain
+special case; a general bounded-treewidth solver remains future work.
+
+\section{Empirical Evidence}
+\label{sec:empirical}
+
+The experiments answer two different questions. The hierarchy experiment
+compares optimal dynamic binary and count-valued policies. The resolution curve
+then asks how much outcome detail is needed to capture the count-valued gain.
+
+\subsection{Dynamic binary versus dynamic count}
+
+For each configuration, infection probabilities are drawn independently from
+$U(0,1)$ and utilities from $\{1,2,3\}$. The exact solvers compute the complete
+value hierarchy. Table~\ref{tab:hierarchy} reports the resulting sample means.
+The percentage is computed instance by instance and then averaged:
+$100(\mathcal U^{\mathrm{dyn,count}}-\mathcal U^{\mathrm{dyn,bin}})/
+\mathcal U^{\mathrm{dyn,bin}}$. It is not the ratio of the two aggregate means.
+The generator is \texttt{augmented/hierarchy\_experiment.py} with PRNG seed 42;
+raw rows are stored in \texttt{hierarchy\_small.csv} and
+\texttt{hierarchy\_n7.csv} under \texttt{results/hierarchy}.
+
+\begin{table}[t]
+\centering
+\caption{Exact dynamic binary and count-valued welfare. The $N=3$ and $N=5$
+rows use 200 seeded instances; the heavier $N=7$ row uses 40. Standard errors
+in the last column are in percentage points.}
+\label{tab:hierarchy}
+\small
+\begin{tabular}{rrrrrr}
+\toprule
+$N$ & $B$ & $G$ & $\overline{\mathcal U}^{\mathrm{dyn,bin}}$
+& $\overline{\mathcal U}^{\mathrm{dyn,count}}$ & relative gain $\pm$ SE \\
+\midrule
+3 & 2 & 3 & 2.686 & 2.704 & $0.63\%\pm0.09$ \\
+5 & 3 & 5 & 4.600 & 4.771 & $3.97\%\pm0.19$ \\
+7 & 3 & 7 & 5.454 & 5.717 & $5.07\%\pm0.37$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The hierarchy inequalities hold on every instance. The count-valued optimum is
+strictly larger in 93 of 200, 196 of 200, and 40 of 40 instances, respectively;
+the median relative gain is zero in the smallest regime. Because $N$, $B$, and
+$G$ vary together, these rows motivate rather than replace a controlled sweep
+over the three parameters.
+
+\subsection{Resolution as a mechanism experiment}
+
+A truncation channel reports $\min(r,c)$. The endpoint $c=1$ is binary, while
+$c\geq G$ is the full count. The sweep contains eight designed instances. We
+report \texttt{mixta\_n6\_g4} because it is the only recorded curve with a
+nontrivial interior fraction, not as an estimate of how often such a curve
+occurs. Its parameters are
+$p=(0.15,0.25,0.35,0.45,0.55,0.65)$,
+$u=(1,2,3,1,2,3)$, $B=3$, and $G=4$. On this instance,
+\[
+  \mathrm{frac}(c)=
+  \frac{\mathcal U_c-\mathcal U_{\mathrm{bin}}}
+       {\mathcal U_{\mathrm{count}}-\mathcal U_{\mathrm{bin}}}.
+\]
+The exact values appear in Table~\ref{tab:resolution}.
+
+\begin{table}[t]
+\centering
+\caption{Resolution curve on the selected $(N,B,G)=(6,3,4)$ instance.}
+\label{tab:resolution}
+\small
+\begin{tabular}{lrr}
+\toprule
+channel & optimal welfare & fraction of count gain \\
+\midrule
+$\{0\}/\{\geq1\}$ & 4.967923 & 0.000 \\
+$\{0\}/\{1\}/\{\geq2\}$ & 5.297456 & 0.845 \\
+$\{0\}/\{1\}/\{2\}/\{\geq3\}$ & 5.357733 & 1.000 \\
+full count & 5.357733 & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Thus the three-level channel captures $84.54\%$ of the full binary-to-count
+difference on this instance. This is a mechanism result on a selected small
+case, not a population average. Other designed instances saturate at the same or
+an earlier truncation level.
+
+\subsection{Structured-inference checks}
+
+The notebook compares the prototype structured routines with exhaustive
+enumeration on small instances and then evaluates the same routines where
+global enumeration is impossible. Table~\ref{tab:structured} records those
+single-instance checks, not a validation suite. Timings are single-run
+measurements on one machine and are only illustrative.
+
+\begin{table}[t]
+\centering
+\caption{Executed correctness and scale checks for structured exact inference.}
+\label{tab:structured}
+\small
+\begin{tabular}{llrr}
+\toprule
+structure & instance & maximum marginal error & time \\
+\midrule
+laminar layers & $N=12$ versus brute force & $2.2\times10^{-16}$ & $<1$ ms \\
+laminar layers & $N=6000$ & global enumeration infeasible & 13 ms \\
+one-bit chain & $N=13$ versus brute force & $1.1\times10^{-16}$ & not recorded \\
+one-bit chain & 200 pools, $N=401$ & global enumeration infeasible & 1.1 ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion and Limitations}
+
+\paragraph{Two mechanisms remain coupled.}
+The separation is between static binary and dynamic count-valued testing. It
+does not yet quantify the optimal dynamic-binary middle cell on the same
+homogeneous family. The empirical hierarchy includes that cell on finite
+heterogeneous instances, but it does not solve the analytic family in
+Theorem~\ref{thm:separation}.
+
+\paragraph{The algorithms address inference rather than global policy optimization.}
+The component, laminar-layer, and chain routines compute exact posterior
+marginals in their stated regimes. These marginals can support greedy scoring
+or a small-state dynamic program, whereas a scalable exact policy optimizer
+must also control the future action space.
+
+\paragraph{Exact counts are an idealization.}
+A quantitative laboratory measurement is noisy and often reports a range or a
+continuous signal rather than an integer infection count. The resolution
+experiment gives a first bridge to coarser channels, but a calibrated observation
+model and external data are required before making a screening recommendation.
+
+\paragraph{The experiments are small and synthetic.}
+The exact comparison is valuable because it separates policies without
+approximation error. Its population sizes are nevertheless limited by exact
+dynamic optimization. The increasing percentages in Table~\ref{tab:hierarchy}
+should be treated as evidence for a mechanism, not as an estimate for a
+particular deployment.
+
+\section{Conclusion}
+
+Count-valued outcomes can change the economics of a small testing budget. The
+separation family makes the gain visible with a simple comparison: static tests
+inspect $B$ people one at a time, while a count-guided policy searches many more
+and certifies a healthy person when one is present. Structured posterior
+algorithms show that this information can be used exactly when overlap has small
+separators. The experiments then connect the two ends: exact counts improve the
+dynamic optimum, and a coarse three-level channel can capture most of that gain
+on a selected small instance.
+
+\appendix
+
+\section{Monotonicity under Resolution Refinement}
+\label{app:resolution}
+
+A quantizer $Q$ partitions the possible counts. We restrict attention to
+quantizers that isolate count zero, because otherwise an observation cannot
+certify an all-clear pool under strict hard clearing.
+
+\begin{lemma}[Refinement never lowers optimal welfare]
+If $Q'$ refines $Q$, then $\mathcal U_Q\leq\mathcal U_{Q'}$.
+\end{lemma}
+
+\begin{proof}
+Run an optimal $Q$-policy under $Q'$. At every stage, deterministically coarsen
+the $Q'$ observation to its $Q$ bin and choose the pool prescribed by the
+$Q$-policy. This reproduces the same coarsened history and the same tested pools
+on every latent profile. Since both channels isolate zero, the realized
+hard-clearing reward is identical. The optimal $Q'$-policy can only do better.
+\end{proof}
+
+The argument is a sequential deterministic-garbling construction, related to
+the comparison of experiments \cite{blackwell1951}. With $B=1$, no observation
+can affect a later action, so every zero-isolating resolution has the same
+optimal value. The recorded resolution data include this flat-horizon control.
+
+\section{Posterior Complexity, Fibers, and Sampling}
+\label{app:complexity}
+
+An exact-count history imposes linear constraints $Az=r$ on a binary latent
+profile $z$. The posterior normalizer is a weighted sum over the feasible fiber
+\[
+  \mathcal F(A,r)=\{z\in\{0,1\}^N:Az=r\}.
+\]
+This representation explains both the informational value and the computational
+cost of count feedback. We do not establish a general complexity theorem here:
+both the complexity of the weighted normalizer and that of an individual
+posterior marginal remain open in this model.
+
+A small enumeration remains useful for intuition. For pools
+$\{0,1,2\}$ and $\{2,3,4\}$, both observed with exact count one, only five
+profiles satisfy the two equations. Replacing the exact outcomes with two
+positive binary outcomes leaves 25 profiles. The all-infected profile belongs
+to the binary set but not to the exact-count fiber. The comparison isolates how
+exact counts sharpen the posterior, complementing the welfare separation in the
+main text.
+
+The implementation uses exact enumeration inside small connected components and
+a Metropolis-style fallback for larger components. Local swap moves alone are
+not sufficient: they preserve total infection count and can leave a fiber
+disconnected. Alternating-path proposals repair verified small counterexamples,
+but the prototype sampler does not prove irreducibility on every binary fiber.
+A general sampler claim requires a connecting move set or a scoped
+connectivity theorem.
+
+\small
+\begin{thebibliography}{9}
+
+\bibitem{finster2023}
+S. Finster, M. Gonz\'alez Amador, E. Lock, F. Marmolejo-Coss\'io,
+E. Micha, and A. D. Procaccia.
+\newblock Welfare-Maximizing Pooled Testing.
+\newblock arXiv:2206.10660, 2023.
+
+\bibitem{lopez2026}
+N. Lopez, F. Marmolejo-Coss\'io, J. R. Tello Ayala, and D. C. Parkes.
+\newblock Dynamic Welfare-Maximizing Pooled Testing.
+\newblock arXiv:2601.22419, 2026.
+
+\bibitem{blackwell1951}
+D. Blackwell.
+\newblock Comparison of Experiments.
+\newblock In \emph{Proceedings of the Second Berkeley Symposium on Mathematical
+Statistics and Probability}, pp. 93--102, 1951.
+
+\bibitem{karimi2019}
+E. Karimi, F. Kazemi, A. Heidarzadeh, K. R. Narayanan, and A. Sprintson.
+\newblock Non-adaptive Quantitative Group Testing Using Irregular Sparse Graph
+Codes.
+\newblock arXiv:1910.06845, 2019.
+
+\bibitem{nambiar2023}
+A. Nambiar, C. Pan, V. Rana, M. Cheraghchi, J. Ribeiro, S. Maslov, and
+O. Milenkovic.
+\newblock Semi-Quantitative Group Testing for Efficient and Accurate qPCR
+Screening of Pathogens with a Wide Range of Loads.
+\newblock arXiv:2307.16352, 2023.
+
+\bibitem{lauritzen1988}
+S. L. Lauritzen and D. J. Spiegelhalter.
+\newblock Local Computations with Probabilities on Graphical Structures and
+Their Application to Expert Systems.
+\newblock \emph{Journal of the Royal Statistical Society, Series B},
+50(2):157--194, 1988.
+
+\end{thebibliography}
+
+\end{document}
