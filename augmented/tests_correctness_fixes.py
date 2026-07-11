@@ -288,6 +288,68 @@ def test_gibbs_mcmc_hastings_correction_on_asymmetric_fiber():
         )
 
 
+# ===================================================================
+# Ablation instrumentation (mission 2026-07-10): count_preserving_only
+# restricts the alternating-path proposal to its count-preserving subset
+# (closed cycles = chained swaps). On a fiber with >= 2 count levels the
+# restricted chain must stay stuck in the seed state's level — that stuck
+# behaviour is the OLD swap-generator bug, reproduced on purpose as the
+# ablation baseline. mcmc_stats exposes the per-component count histogram
+# so the benchmark can measure which levels each kernel visits.
+# ===================================================================
+
+def _force_mcmc_gibbs_kw(p, history, n, seed, cap=2, **kw):
+    import augmented.bayesian as bayes
+    saved = bayes.EXACT_ACTIVE_THRESHOLD
+    bayes.EXACT_ACTIVE_THRESHOLD = cap
+    try:
+        return bayes.gibbs_update(p, history, n, num_iterations=20000,
+                                  burn_in=2000, seed=seed, **kw)
+    finally:
+        bayes.EXACT_ACTIVE_THRESHOLD = saved
+
+
+def test_swap_only_kernel_is_stuck_in_one_count_level():
+    # Restricted to count-preserving moves the chain cannot leave the count
+    # level of its seed state on the canonical two-level fiber, so its
+    # marginals are the seed state itself (0/1 values).
+    from augmented.bayesian import bayesian_update_by_counting
+    p = [0.15, 0.15, 0.15]
+    history = ((mask_from_indices([0, 1]), 1), (mask_from_indices([1, 2]), 1))
+    exact = bayesian_update_by_counting(p, history, 3)  # [0.15, 0.85, 0.15]
+    for seed in (0, 1, 7, 42):
+        marg = _force_mcmc_gibbs_kw(p, history, 3, seed=seed,
+                                    count_preserving_only=True)
+        err = max(abs(marg[i] - exact[i]) for i in range(3))
+        assert err > 0.10, (
+            f"seed={seed}: swap-only kernel gave {marg} vs exact {exact} "
+            f"(err {err:.3f}) — expected it STUCK (biased)")
+
+
+def test_count_preserving_default_off_is_backward_compatible():
+    p = [0.15, 0.15, 0.15]
+    history = ((mask_from_indices([0, 1]), 1), (mask_from_indices([1, 2]), 1))
+    a = _force_mcmc_gibbs(p, history, 3, seed=5)
+    b = _force_mcmc_gibbs_kw(p, history, 3, seed=5,
+                             count_preserving_only=False)
+    assert a == b, f"default flag changed the trajectory: {a} vs {b}"
+
+
+def test_gibbs_mcmc_stats_capture_count_levels():
+    p = [0.15, 0.15, 0.15]
+    history = ((mask_from_indices([0, 1]), 1), (mask_from_indices([1, 2]), 1))
+    stats_full, stats_swap = [], []
+    _force_mcmc_gibbs_kw(p, history, 3, seed=0, mcmc_stats=stats_full)
+    _force_mcmc_gibbs_kw(p, history, 3, seed=0, count_preserving_only=True,
+                         mcmc_stats=stats_swap)
+    assert len(stats_full) == 1 and len(stats_swap) == 1
+    levels_full = set(stats_full[0]["count_hist"])
+    levels_swap = set(stats_swap[0]["count_hist"])
+    assert levels_full == {1, 2}, f"full kernel visited {levels_full}"
+    assert len(levels_swap) == 1, f"swap-only visited {levels_swap}"
+    assert stats_full[0]["draws"] > 0 and stats_full[0]["accepted"] > 0
+
+
 def _run_all():
     import traceback
     tests = [v for k, v in sorted(globals().items())

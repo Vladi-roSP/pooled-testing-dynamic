@@ -382,7 +382,8 @@ def _exact_component_marginals(comp, tests, p):
     return {comp[b]: active_w[b] / total for b in range(m)}
 
 
-def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
+def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps,
+                              count_preserving_only=False):
     """Propose a Markov-basis move on the exact-count fiber: a kernel vector
     delta in {-1,0,+1} with A·delta = 0 that is applicable to `state`
     (flips 0->1 where +1, 1->0 where -1). Built as a randomized alternating
@@ -434,6 +435,9 @@ def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
 
     move = {a: state[a] + d for a, d in delta.items()}
 
+    if count_preserving_only and sum(delta.values()) != 0:
+        return None       # ablation kernel: reject count-changing moves
+
     # Mirror-path replay: eligible counts of the reverse proposal from `move`.
     # At reverse step k the excluded set is the same {a0, chosen_1..chosen_{k-1}}
     # and every agent still keeps its post-move value (agents in delta are
@@ -458,14 +462,22 @@ def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps):
 
 def _alternating_move_component_marginals(comp, tests, p, rng,
                                           num_iterations, burn_in,
-                                          window_size, tolerance):
+                                          window_size, tolerance,
+                                          count_preserving_only=False,
+                                          stats=None):
     """Metropolis-Hastings generator over a connected component using
     alternating-path Markov moves (count-changing, hence ergodic across count
     levels) with prior-ratio acceptance times the mirror-path Hastings factor
     (the proposal is asymmetric; without the correction the stationary
     distribution is biased — audit 2026-07-06). Used only when a single
     connected component is too large for exact enumeration (rare). Validated
-    against exact enumeration on small forced instances."""
+    against exact enumeration on small forced instances.
+
+    With count_preserving_only the proposal is restricted to its
+    count-preserving subset (the old swap generator); this is the ablation
+    baseline and is deliberately non-ergodic across count levels. When a list
+    is passed as ``stats`` one dict per MCMC-solved component is appended with
+    the visited count-level histogram and the proposal/acceptance tallies."""
     agent_tests = {a: [] for a in comp}
     for ti, (members, r) in enumerate(tests):
         for a in members:
@@ -482,13 +494,18 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
     active_counts = {a: 0 for a in comp}
     total_draws = 0
     prev = None
+    proposed = 0
+    accepted = 0
+    count_hist = {}
     for it in range(num_iterations):
         # several move attempts per sweep to decorrelate
         for _ in range(max(len(comp), 5)):
-            proposal = _propose_alternating_move(comp, tests, agent_tests,
-                                                 state, rng, max_steps)
+            proposal = _propose_alternating_move(
+                comp, tests, agent_tests, state, rng, max_steps,
+                count_preserving_only=count_preserving_only)
             if proposal is None:
                 continue
+            proposed += 1
             move, log_ratio = proposal   # start from the Hastings factor
             ok = True
             for a, nv in move.items():
@@ -503,10 +520,14 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
                 log_ratio += math.log(num) - math.log(den) if den > 0 else 50.0
             if ok and (log_ratio >= 0 or rng.random() < math.exp(log_ratio)):
                 state.update(move)
+                accepted += 1
         if it >= burn_in:
+            lvl = 0
             for a in comp:
                 if state[a] == 1:
                     active_counts[a] += 1
+                    lvl += 1
+            count_hist[lvl] = count_hist.get(lvl, 0) + 1
             total_draws += 1
             if total_draws % window_size == 0:
                 cur = {a: active_counts[a] / total_draws for a in comp}
@@ -517,6 +538,12 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
 
     if total_draws == 0:
         return _exact_component_marginals(comp, tests, p)
+    if stats is not None:
+        stats.append({"comp": list(comp),
+                      "tests": [(list(members), r) for members, r in tests],
+                      "count_hist": count_hist,
+                      "proposed": proposed, "accepted": accepted,
+                      "draws": total_draws})
     return {a: active_counts[a] / total_draws for a in comp}
 
 
@@ -528,7 +555,8 @@ def _mask(agents):
 
 
 def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
-                 window_size=50, tolerance=1e-4, seed=None):
+                 window_size=50, tolerance=1e-4, seed=None,
+                 count_preserving_only=False, mcmc_stats=None):
     """Approximate posterior marginals via Gibbs drawing (MCMC).
 
     Adapted from Appendix A.2 of "Dynamic Welfare-Maximizing Adaptive Group Counting"
@@ -538,16 +566,18 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
     The algorithm:
       1. Preprocessing: deterministic deductions (r=0 → all clearancey,
          r=|pool| → all active), with constraint propagation.
-      2. Initialize state vector by drawing from priors.
-      3. For very small active subproblems, fall back to exact counting
-         to avoid mixing pathologies in disconnected feasible regions.
-      4. Gibbs iterations: for each agent in random order, compute the
-         conditional P(X_i | X_{-i}) by checking consistency with all
-         test constraints, then draw or force deterministically.
-      5. Add Metropolis-Hastings swap proposals, both within individual
-         test pools and across the full active set, to improve mixing.
-      6. After burn-in, collect draws and estimate marginals as
-         empirical frequencies.
+      2. Decompose the remaining agents into connected components
+         (agents are connected iff they co-occur in a remaining test);
+         the posterior factorizes across components.
+      3. Solve every component with at most EXACT_ACTIVE_THRESHOLD
+         agents exactly by enumerating its 2^|component| assignments.
+      4. Only a larger single component falls back to MCMC: Metropolis-
+         Hastings on the exact-count fiber via alternating-path moves —
+         which can change the total active count, unlike the removed
+         single-site/swap/block generator — with the mirror-path
+         Hastings correction for the asymmetric proposal.
+      5. After burn-in, collect draws and estimate marginals as
+         empirical frequencies, with a rolling-window convergence stop.
 
     Parameters
     ----------
@@ -567,6 +597,16 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
         Convergence threshold: stop if max change in marginals < tolerance.
     seed : int or None
         Random seed for reproducibility.
+    count_preserving_only : bool
+        Ablation switch. When True, the MCMC proposal is restricted to its
+        count-preserving subset (the removed swap generator), which is
+        non-ergodic across count levels and biased on multi-level fibers.
+        Default False reproduces the ergodic sampler exactly.
+    mcmc_stats : list or None
+        Optional collector. When a list is passed, one dict per MCMC-solved
+        component is appended: {"comp", "tests", "count_hist", "proposed",
+        "accepted", "draws"}. Components solved by exact enumeration append
+        nothing.
 
     Returns
     -------
@@ -664,7 +704,9 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
             marg = _alternating_move_component_marginals(
                 comp, comp_tests, p, rng,
                 num_iterations=num_iterations, burn_in=burn_in,
-                window_size=window_size, tolerance=tolerance)
+                window_size=window_size, tolerance=tolerance,
+                count_preserving_only=count_preserving_only,
+                stats=mcmc_stats)
         for a, val in marg.items():
             posterior[a] = val
 
