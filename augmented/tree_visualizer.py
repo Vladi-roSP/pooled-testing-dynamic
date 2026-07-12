@@ -201,6 +201,80 @@ def render_tree(tree, n, group_colors=None, node_size_by='utility',
     return dot
 
 
+def render_tree_path(tree, n, z_mask, title=None, show_pool_labels=True):
+    """Render vertical, con la RUTA REALIZADA resaltada para un perfil latente
+    concreto `z_mask` (bit i = 1 si la persona i está infectada).
+
+    En cada nodo de decisión, el resultado observado es el conteo
+    r = |pool ∩ z|, así que la ruta que la política de verdad recorre queda
+    determinada por z. Esa ruta se dibuja en azul y con trazo grueso; las ramas
+    no tomadas quedan en gris. Es la vista para construir intuición y para
+    comparar dos políticas sobre el mismo perfil (¿en qué nodo divergen?).
+
+    Devuelve un graphviz.Digraph; para PDF, renderízalo a PNG con
+    `.pipe(format='png')`.
+    """
+    from augmented.core import test_result
+
+    ON, OFF = '#2563eb', '#c9ccd1'           # azul en-ruta, gris fuera
+    INK_ON, INK_OFF = '#111111', '#9aa0a6'
+
+    dot = graphviz.Digraph(format='svg')
+    dot.attr(rankdir='TB')
+    if title:
+        dot.attr(label=title, labelloc='t', fontsize='14')
+    dot.attr('node', fontname='Helvetica', fontsize='10')
+    dot.attr('edge', fontname='Helvetica', fontsize='9')
+
+    ctr = [0]
+
+    def _nid():
+        ctr[0] += 1
+        return f'n{ctr[0]}'
+
+    def _add(node, on_path, parent=None, edge_r=None, edge_on=False):
+        nid = _nid()
+        fill = '#dbe7ff' if on_path else '#ffffff'
+        pen = '2.6' if on_path else '1.0'
+        border = ON if on_path else OFF
+        ink = INK_ON if on_path else INK_OFF
+
+        if node.get('terminal'):
+            cleared = node.get('cleared_str', '{}')
+            util = node.get('utility', 0.0)
+            label = f'certifica {cleared}\\nutilidad {util:.2f}'
+            dot.node(nid, label=label, shape='box',
+                     style='rounded,filled', fillcolor=fill, color=border,
+                     penwidth=pen, fontcolor=ink)
+        else:
+            step = node['step']
+            pool_str = node.get('pool_str', '{}')
+            label = f'paso {step}'
+            if show_pool_labels:
+                label += f'\\nprueba {pool_str}'
+            dot.node(nid, label=label, shape='box',
+                     style='rounded,filled', fillcolor=fill, color=border,
+                     penwidth=pen, fontcolor=ink)
+
+        if parent is not None:
+            ecol = ON if edge_on else OFF
+            epen = '2.6' if edge_on else '1.0'
+            efc = INK_ON if edge_on else INK_OFF
+            dot.edge(parent, nid, label=f' cuenta {edge_r} ',
+                     color=ecol, penwidth=epen, fontcolor=efc)
+
+        if not node.get('terminal'):
+            pool = node.get('pool', 0)
+            r_taken = test_result(pool, z_mask) if on_path else None
+            for r in sorted(node.get('children', {}).keys()):
+                child_on = on_path and (r == r_taken)
+                _add(node['children'][r], child_on,
+                     parent=nid, edge_r=r, edge_on=child_on)
+
+    _add(tree, True)
+    return dot
+
+
 # ---------------------------------------------------------------------------
 # Side-by-side and series rendering
 # ---------------------------------------------------------------------------
