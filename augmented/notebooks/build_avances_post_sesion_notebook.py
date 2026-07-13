@@ -35,10 +35,16 @@ def code(src):
 # ===================================================================
 md(r"""# Notebook 19 - Avances y próximos pasos — tras la sesión del 9 de julio
 
-Pieza central: un ejemplo de **separación** donde una estrategia dinámica con
-conteo supera, en forma cerrada, al mejor esquema estático. Alrededor: el
-algoritmo eficiente en regímenes tratables, el modelo de ruido, la fibra y el
-encuadre de publicación. Cada número se regenera aquí.""")
+Pieza central: un ejemplo de **separación** donde la estrategia dinámica
+aumentada supera, en forma cerrada, al mejor esquema estático. Tres regímenes
+aparecen todo el tiempo; conviene fijar los nombres desde ya:
+
+- **estático**: el plan se fija de antemano, nada se adapta;
+- **dinámico binario**: adaptativo, pero la prueba solo dice 0 vs ≥1;
+- **dinámico aumentado**: adaptativo y la prueba devuelve el conteo exacto.
+
+Alrededor: el algoritmo eficiente en regímenes tratables, el modelo de ruido,
+la fibra y el encuadre de publicación. Cada número se regenera aquí.""")
 
 code(r"""import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(''))))
@@ -75,11 +81,11 @@ print('funciones listas')""")
 # ===================================================================
 md(r"""## 1. El ejemplo de separación
 
-**El montaje.** Población infinita homogénea: utilidad $u$, probabilidad $q$ de
-estar sano, $q<1/2$ (prevalencia alta). Pruebas de grupo de tamaño $G$,
-presupuesto $B=k+\log_2 G$. Se acredita $u$ a quien queda en un pool con conteo
-cero. Pregunta ancla: ¿cuándo un esquema **dinámico con conteo** supera al mejor
-**estático sin conteo**?
+**El montaje.** Imagínense una población infinita y toda idéntica: cada persona
+con utilidad u y probabilidad q de estar sana, con q<0.5. Las pruebas grupales
+son de tamaño G y el budget es B = k + log2(G). Se acredita u a quien queda en
+un pool con conteo cero. La pregunta ancla: ¿cuándo el **dinámico aumentado**
+le gana al mejor **estático**?
 
 **Óptimo estático.** La métrica es utilidad por prueba. Una prueba individual
 rinde $u\,q$; una de grupo $g$ rinde $u\,g\,q^g\le u\,q$ para $q<1/2$. Individual
@@ -98,22 +104,22 @@ est = util_estatico(B, q)
 din, kG = util_dinamico(B, G, q)
 print(f'q={q}  G={G}  B={B}  (k={B-round(math.log2(G))}, cubre kG={kG} personas)')
 print(f'  estático  U/u = B*q          = {est:.3f}')
-print(f'  dinámico  U/u = 1-(1-q)^kG   = {din:.3f}')
-print(f'  ventaja del dinámico: {din-est:+.3f}u  ({100*(din/est-1):+.0f}%)')""")
+print(f'  din. aumentado  U/u = 1-(1-q)^kG   = {din:.3f}')
+print(f'  ventaja del aumentado: {din-est:+.3f}u  ({100*(din/est-1):+.0f}%)')""")
 
 md(r"""**El matiz del exponente.** Francisco escribió la cobertura como
 $kG\approx B$; la real es $kG\approx B\,G$, un factor $\sim G$ mayor. Importa:
-por Bernoulli $1-(1-q)^{n}\le n\,q$, así que con cobertura solo $B$ el dinámico
+por Bernoulli $1-(1-q)^{n}\le n\,q$, así que con cobertura solo $B$ el aumentado
 **nunca** ganaría. Con la cobertura verdadera gana. Corregir el exponente
 refuerza la tesis.""")
 
-code(r"""# Bernoulli: con exponente B el dinámico jamás ganaría (1-(1-q)^B <= B*q)
+code(r"""# Bernoulli: con exponente B el aumentado jamás ganaría (1-(1-q)^B <= B*q)
 qs = np.linspace(0.02, 0.48, 25); Bs = np.arange(2, 15)
 peor = max(float((1-(1-q)**b) - b*q) for q in qs for b in Bs)
 print(f'max sobre la rejilla de (1-(1-q)^B) - B*q = {peor:.4f}   (<=0 => con kG~B nunca gana)')
 print('con el exponente REAL kG=(B-log2 G)*G, en cambio, la separación sí ocurre (abajo)')""")
 
-code(r"""# figura: estático vs dinámico contra el presupuesto B (q=0.1, G=16)
+code(r"""# figura: estático vs dinámico aumentado contra el presupuesto B (q=0.1, G=16)
 q, G = 0.1, 16
 Bs = list(range(1 + round(math.log2(G)), 15))
 est = [util_estatico(b, q) for b in Bs]
@@ -150,24 +156,25 @@ im = ax2.imshow(adv, origin='lower', aspect='auto', cmap='RdBu',
 BB, QQ = np.meshgrid(Bgrid, qs)
 ax2.contour(BB, QQ, adv, levels=[0.0], colors=[TINTA], linewidths=1.2)
 ax2.set_xlabel('presupuesto B'); ax2.set_ylabel('prob. de estar sano  q')
-ax2.set_title('Dónde gana el dinámico sobre (q, B); la curva es la frontera',
+ax2.set_title('Dónde gana el dinámico aumentado sobre (q, B); la curva es la frontera',
               fontsize=10)
 cb = fig.colorbar(im, ax=ax2, fraction=0.046, pad=0.04, extend='min')
-cb.set_label('(dinámico − estático) / u', fontsize=8)
+cb.set_label('(din. aumentado − estático) / u', fontsize=8)
 fig.tight_layout(); plt.show()""")
 
 md(r"""**Lectura.** La separación es fuerte con prevalencia alta y presupuesto
 moderado: hallar a un sano raro es caro individualmente ($B\,q$) pero barato con
 conteo. La cota topa en $u$ (solo cuenta al sano garantizado), así que la ventana
-de victoria es $1+\log_2 G \le B < 1/q$. Este ejemplo, solo, ya es un resultado.""")
+de victoria es $1+\log_2 G \le B < 1/q$. Este ejemplo, solo, ya es un buen paper.""")
 
 # -------------------------------------------------------------------
 md(r"""### 1.1 Atribución: ¿dinamismo o conteo?
 
-**Intuición.** El ejemplo mueve dos palancas: estática→dinámica y binaria→conteo.
-Para separarlas medimos el peldaño intermedio, el óptimo **dinámico binario**
-(adaptativo, sin conteo). El solver lo da con su perilla `cap`: `cap=1` binariza
-(0 vs ≥1), `cap=None` deja el conteo completo.""")
+**Intuición.** Hagan de cuenta que el ejemplo mueve dos palancas a la vez:
+estática→dinámica y binaria→conteo. ¿Cuánto pone cada una? El peldaño intermedio
+lo dice: el óptimo **dinámico pero binario** (adaptativo, sin leer el conteo).
+El solver lo da con su perilla `cap`: `cap=1` binariza (0 vs ≥1), `cap=None`
+deja el conteo completo.""")
 
 md(r"""**Afirmación.** En una instancia finita (n=5, G=4, B=4), el dinámico
 binario es **idéntico** al estático: adaptar sin contar no gana nada. Todo el
@@ -219,9 +226,9 @@ pruebas binarias, ser dinámico no compra nada sobre el estático (cada individu
 es i.i.d.). Solo el conteo despega, y su ventaja crece con $q$. La separación no
 es premio por ser dinámico, es **premio por contar**.""")
 
-md(r"""**Para discutir.** ¿Reportar esta descomposición (estático /
-dinámico-binario / dinámico-conteo) como tabla de atribución, para cerrar de
-antemano la objeción de "movieron dos variables a la vez"?""")
+md(r"""**Para discutir.** ¿Por qué no reportar esta descomposición (estático /
+dinámico-binario / dinámico-conteo) como tabla de atribución? Cerraría de
+antemano la objeción de "movieron dos variables a la vez".""")
 
 # ===================================================================
 md(r"""## 2. Los regímenes tratables y un algoritmo eficiente
@@ -230,10 +237,11 @@ La inferencia exacta es #P-hard en general, pero se vuelve tratable cuando el
 traslape es simple. Dos familias, verificadas contra fuerza bruta y escaladas a
 tamaños imposibles de enumerar.
 
-**Laminar: cajas dentro de cajas.** Pools anidados; los conteos anidados se
-*restan* (si $A$ reporta 5 y su sub-pool $B$ reporta 2, la capa $A\setminus B$
-tiene 3). Cada capa queda con conteo fijo → subproblemas "exactamente $k$ de
-$m$", exactos en $O(m\cdot k)$ sin enumerar $2^m$.""")
+**Laminar: cajas dentro de cajas.** Imagínense pools anidados: si la caja
+grande A reporta 5 infectados y su sub-caja B reporta 2, la capa de en medio
+tiene exactamente 5-2=3. Los conteos se restan — todo esto es un ejercicio de
+contar — y cada capa queda con conteo fijo: subproblemas "exactamente k de m",
+exactos en O(m·k) sin enumerar 2^m.""")
 
 code(r"""from augmented.core import mask_from_indices
 from augmented.bayesian import bayesian_update_by_counting
@@ -461,11 +469,11 @@ El conteo real llega con ruido. De cuatro modelos posibles (ver
 `paper/modelo_realista_pruebas.md`), aquí el que huele a qPCR: el conteo se
 observa con ruido gaussiano de desviación σ.""")
 
-md(r"""**Intuición.** La estrategia de la §1 solo pregunta un bit por paso:
-"¿este bloque está saturado o no?". Es fácil: distinguir un bloque con un sano
-(conteo $g-1$) de uno saturado (conteo $g$) es distinguir *una persona* del
-ruido, sin importar el tamaño del bloque. Por eso debería aguantar bastante
-ruido.""")
+md(r"""**Intuición.** Hagan de cuenta que el binary search nunca lee el conteo
+fino: solo pregunta un bit por paso, ¿este bloque está saturado o no? Y esa
+discriminación es fácil — distinguir un bloque con un sano (conteo g-1) de uno
+saturado (conteo g) es distinguir *una persona* del ruido, sin importar el
+tamaño del bloque. Ojalá entonces aguante bastante ruido; abajo vemos que sí.""")
 
 md(r"""**Afirmación.** Con umbral a la mitad, el error por paso es
 $\varepsilon(\sigma)=\Phi(-1/2\sigma)$, y la separación sobrevive hasta un σ\*.
@@ -535,10 +543,10 @@ for s in (0.2, 0.3, 0.5):
     cota = sin_ruido * (1 - eps_por_paso(s)) ** (logG + 1)
     assert cota <= mc + 0.02, f'la cota conservadora excede la verdad en sigma={s}'
 print('autoverificación OK: sigma=0 recupera la §1; la cota conservadora <= verdad MC')
-print(f'estático={est:.3f}  dinámico sin ruido={sin_ruido:.3f}')
+print(f'estático={est:.3f}  din. aumentado sin ruido={sin_ruido:.3f}')
 for s in (0.0, 0.2, 0.3, 0.5, 0.8):
     mc, falso = dinamico_ruidoso_mc(B, G, q, s, sims=20000, seed=1)
-    print(f'  sigma={s}: dinámico MC={mc:.3f}  falso-limpio={falso:.3f}  '
+    print(f'  sigma={s}: aumentado MC={mc:.3f}  falso-limpio={falso:.3f}  '
           f'eps/paso={eps_por_paso(s):.3f}')""")
 
 code(r"""# figura: la separación contra el ruido (izq) y el precio en riesgo (der)
@@ -551,7 +559,7 @@ sig_star = next((float(s) for s, m in zip(sigmas, util) if m < est), None)
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 3.6))
 ax1.axhline(est, color=GRIS, lw=1.6, label='estático (individual)')
-ax1.plot(sigmas, util, marker='o', ms=3, color=AZUL, label='dinámico con ruido (simulado)')
+ax1.plot(sigmas, util, marker='o', ms=3, color=AZUL, label='din. aumentado con ruido (simulado)')
 ax1.plot(sigmas, cota, ls=':', color=TINTA, lw=1, label='cota conservadora (todos los pasos)')
 ax1.fill_between(sigmas, est, util, where=[u > est for u in util], color=AZUL, alpha=0.12)
 if sig_star is not None:
@@ -632,10 +640,10 @@ conteo) como proxy escalar del "valor de contar" de una historia?""")
 # ===================================================================
 md(r"""## 5. El parámetro β: un lookahead barato
 
-**Intuición.** El greedy miope maximiza $P(r=0)\cdot\sum u$ (limpiar ahora). El
-beta-greedy suma $\beta\cdot(\text{info-gain})$: premia probar un pool que informa
-mejor para el paso siguiente. Es un proxy barato del lookahead, y debería ayudar
-donde la miopía duele.""")
+**Intuición.** El greedy miope maximiza P(r=0)·Σu: limpiar ahora. El beta-greedy
+le suma un premiecito de información, β·info-gain, que a veces lo empuja a probar
+un pool que limpia menos hoy pero informa mejor para el paso siguiente. Es un
+proxy barato del lookahead, y debería ayudar justo donde la miopía duele.""")
 
 md(r"""**Afirmación.** En la instancia del notebook de árboles, subir β mueve el
 pool de apertura hacia el que elige el óptimo y recupera ~85% del hueco. Pero es
@@ -671,7 +679,7 @@ for b in (0.0, 1.0, 3.0, 5.0):
 
 code(r"""fig, ax = plt.subplots(figsize=(6.5, 3.6))
 ax.plot(betas, eus, color=AZUL, lw=1.8)
-ax.axhline(opt_b, color=GRIS, ls='--', lw=1.2, label='óptimo (techo)')
+ax.axhline(opt_b, color=GRIS, ls='--', lw=1.2, label='óptimo aumentado (techo)')
 ax.axhline(greedy_plano, color=TINTA, ls=':', lw=1.0, label='greedy plano (β=0)')
 ax.plot([best_beta], [best_eu], 'o', color=AMBAR, ms=8, zorder=3)
 ax.annotate(f'pico β={best_beta}\n{best_eu:.2f}', (best_beta, best_eu),
