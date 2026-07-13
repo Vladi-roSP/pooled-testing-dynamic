@@ -5,7 +5,7 @@ Pieza central: el ejemplo de separación estático vs dinámico-aumentado que
 propuso Francisco (población infinita homogénea, cerrado en forma analítica),
 verificado adversarialmente. Alrededor, los otros puntos de avance de la
 sesión: los regímenes tratables + DP eficiente, el modelo realista de pruebas
-(biomarkers), la verificación de la fibra, y el encuadre para publicar.
+(biomarkers), la anatomía del hueco del greedy, y el encuadre para publicar.
 
 Run:
     python augmented/notebooks/build_avances_post_sesion_notebook.py
@@ -44,7 +44,8 @@ aparecen todo el tiempo; conviene fijar los nombres desde ya:
 - **dinámico aumentado**: adaptativo y la prueba devuelve el conteo exacto.
 
 Alrededor: el algoritmo eficiente en regímenes tratables, el modelo de ruido,
-la fibra y el encuadre de publicación. Cada número se regenera aquí.""")
+la anatomía del hueco del greedy y el encuadre de publicación. Cada número se
+regenera aquí.""")
 
 code(r"""import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(''))))
@@ -589,53 +590,68 @@ utilidad *segura* (con el falso-limpio acotado)? ¿Y la re-medición (SPRT) empu
 σ\* arriba y el falso-limpio abajo a la vez, o hay un trade-off duro?""")
 
 # ===================================================================
-md(r"""## 4. Verificación de la fibra
+md(r"""## 4. De qué está hecho el hueco del greedy: miopía e independencia
 
-Duda de la sesión anterior: ¿por qué la *fibra* (perfiles consistentes con los
-conteos) son solo cinco, y no vale todos-infectados? Porque el conteo exacto es
-una restricción brutal: todos-infectados daría conteo 3, no 1, y la evidencia lo
-descarta.""")
+**Intuición.** El greedy comete dos pecados separables: es **miope** (elige por
+la recompensa de este paso) y **puntúa con una aproximación** — estima P(pool
+limpio) como el producto de marginales ∏(1−p̃ᵢ), que es falso en cuanto las
+pruebas correlacionan a la gente. Para repartir la culpa usamos el mismo truco
+de la §1.1, un peldaño intermedio: el greedy con **scoring exacto** (sigue
+miope, pero puntúa con la P(r=0|H) conjunta verdadera).""")
 
-code(r"""A = {0, 1, 2}; Bp = {2, 3, 4}   # dos pruebas que se traslapan en la persona 2
-fibra_conteo, fibra_binaria = [], []
-for z in itertools.product((0, 1), repeat=5):
-    inf = {i for i in range(5) if z[i]}
-    cA, cB = len(inf & A), len(inf & Bp)
-    if cA == 1 and cB == 1:   fibra_conteo.append(z)   # aumentado: conteo exacto = 1
-    if cA >= 1 and cB >= 1:   fibra_binaria.append(z)  # clásico: 'positivo' = >=1
-todos = (1, 1, 1, 1, 1)
-print(f'perfiles posibles: 2^5 = {2**5}')
-print(f'fibra con CONTEO exacto = 1 : {len(fibra_conteo)}  ->',
-      [''.join(map(str, z)) for z in fibra_conteo])
-print(f'fibra con test BINARIO (>=1): {len(fibra_binaria)}')
-print(f'todos-infectados en la fibra de conteo?  {todos in fibra_conteo}  '
-      f'(su conteo en A = {len(set(range(5)) & A)}, no 1)')
-print(f'todos-infectados en la fibra binaria?    {todos in fibra_binaria}')
-print()
-print('La caída de 25 a 5 perfiles ES el valor de contar: el conteo exacto')
-print('descarta 20 mundos que el bit binario deja en pie.')""")
+md(r"""**Afirmación.** hueco = OPT − greedy se parte en dos: **miopía** =
+OPT − greedy exacto (la parte que ningún scoring puede curar) e
+**independencia** = greedy exacto − greedy (la parte que el scoring exacto, ya
+implementado, cierra). La miopía domina — alrededor de tres cuartos en el
+régimen de referencia.""")
 
-code(r"""sizes = [2 ** 5, len(fibra_binaria), len(fibra_conteo)]
-etqs = ['posibles a priori\n(2^5 = 32)', 'consistentes con\ntest binario (≥1)',
-        'consistentes con\nconteo exacto (=1)']
+code(r"""from augmented.greedy import greedy_myopic_expected_utility as greedy_eu
+from augmented.independence_gap import exact_greedy_myopic_expected_utility as exact_eu
+
+# receta del documento de referencia: p ~ U(0,1), u ∈ {1,2,3}, B=G=3
+res = {}
+for n_g, seeds in ((5, 15), (6, 12)):
+    tm = ti = to = 0.0
+    for seed in range(seeds):
+        rng = _r.Random(1000 + seed)
+        p = [rng.uniform(0.0, 1.0) for _ in range(n_g)]
+        u = [float(rng.choice([1, 2, 3])) for _ in range(n_g)]
+        g = greedy_eu(p, u, 3, 3)
+        e = exact_eu(p, u, 3, 3)
+        o = solve_optimal_dapts(p, u, 3, 3)[0]
+        # autoverificación: ambas políticas son factibles => no superan al óptimo
+        assert g <= o + 1e-9 and e <= o + 1e-9
+        tm += o - e; ti += e - g; to += o - g
+    assert tm > ti, f'la miopía no domina en n={n_g}'
+    res[n_g] = (tm / to, ti / to)
+    print(f'n={n_g} ({seeds} instancias): miopía {tm/to:.0%} del hueco, '
+          f'independencia {ti/to:.0%}')""")
+
+code(r"""ns = list(res)
+mi = [res[n][0] for n in ns]; ind = [res[n][1] for n in ns]
 fig, ax = plt.subplots(figsize=(6.2, 3.2))
-ax.barh(range(3), sizes, color=[GRIS, TINTA, AZUL], alpha=0.85)
-ax.set_yticks(range(3)); ax.set_yticklabels(etqs, fontsize=8)
-ax.invert_yaxis()
-for i, s in enumerate(sizes):
-    ax.text(s + 0.5, i, str(s), va='center', fontsize=9, color=TINTA)
-ax.set_xlabel('# de perfiles consistentes'); ax.set_xlim(0, 34)
-ax.set_title('El conteo exacto descarta mundos que el bit binario deja en pie',
-             fontsize=10)
+ax.bar([str(n) for n in ns], mi, 0.5, color=AMBAR, label='miopía (lookahead/β la ataca)')
+ax.bar([str(n) for n in ns], ind, 0.5, bottom=mi, color=AZUL,
+       label='independencia (el scoring exacto la cierra)')
+for i, n in enumerate(ns):
+    ax.text(i, mi[i] / 2, f'{mi[i]:.0%}', ha='center', fontsize=9, color='white')
+    ax.text(i, mi[i] + ind[i] / 2, f'{ind[i]:.0%}', ha='center', fontsize=9, color='white')
+ax.set_xlabel('n'); ax.set_ylabel('fracción del hueco greedy→óptimo')
+ax.set_ylim(0, 1.45)
+ax.set_title('Anatomía del hueco del greedy: dos causas, dos remedios', fontsize=10)
+ax.legend(fontsize=8, loc='upper center', ncol=1)
 fig.tight_layout(); plt.show()""")
 
-md(r"""**Lectura.** El bit binario deja 25 mundos; el conteo exacto los deja en 5.
-Esa caída extra (25→5) es el valor de contar medido en mundos descartados: la
-misma evidencia descarta cuatro veces más incertidumbre cuando devuelve el número
-en vez del bit.""")
+md(r"""**Lectura.** La palanca grande es la miopía: la tendrías aun con scoring
+perfecto, y solo el lookahead (o su proxy β, §5) la ataca. La independencia es
+la palanca chica y barata — el scoring exacto ya existe (counting a n chico,
+Gibbs a escala). Las proporciones se mueven con el régimen y las semillas, pero
+el orden no se invierte: primero miopía.""")
 
-md(r"""**Para discutir.** ¿Sirve el cociente entre tamaños de fibra (binaria /
-conteo) como proxy escalar del "valor de contar" de una historia?""")
+md(r"""**Para discutir.** La independencia crece con n en las mediciones de
+referencia. A escala (n=20–50, donde solo Gibbs puede puntuar exacto), ¿el
+cuarto se vuelve un tercio — y justificaría pagar el costo del scoring por
+Gibbs — o el lookahead sigue siendo el único gasto que vale?""")
 
 # ===================================================================
 md(r"""## 5. El parámetro β: un lookahead barato
@@ -643,7 +659,7 @@ md(r"""## 5. El parámetro β: un lookahead barato
 **Intuición.** El greedy miope maximiza P(r=0)·Σu: limpiar ahora. El beta-greedy
 le suma un premiecito de información, β·info-gain, que a veces lo empuja a probar
 un pool que limpia menos hoy pero informa mejor para el paso siguiente. Es un
-proxy barato del lookahead, y debería ayudar justo donde la miopía duele.""")
+proxy barato del lookahead — apunta a los tres cuartos de miopía de la §4.""")
 
 md(r"""**Afirmación.** En la instancia del notebook de árboles, subir β mueve el
 pool de apertura hacia el que elige el óptimo y recupera ~85% del hueco. Pero es
