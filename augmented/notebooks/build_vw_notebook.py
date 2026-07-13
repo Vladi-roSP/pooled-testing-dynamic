@@ -1,10 +1,10 @@
-"""Build 06_vw.ipynb — VW super-nodos: notebook con definiciones claras,
+"""Build 08_vw.ipynb — VW super-nodos: notebook con definiciones claras,
 ejemplos numéricos y la pregunta de Marmolejo sobre posteriores."""
 import os
 import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "06_vw.ipynb")
+OUT = os.path.join(HERE, "08_vw.ipynb")
 
 nb = nbf.v4.new_notebook()
 nb.metadata["kernelspec"] = {

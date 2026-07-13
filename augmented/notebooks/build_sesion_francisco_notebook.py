@@ -1,4 +1,4 @@
-"""Build sesion_francisco.ipynb — el arco de la sesión del 9 de julio.
+"""Build 18_sesion_francisco.ipynb — el arco de la sesión del 9 de julio.
 
 Versión visual: cada acto tiene su figura (frecuencias sobre la fibra y traza
 de convergencia para el bug de Hastings; el sándwich de cotas; la saturación
@@ -12,13 +12,13 @@ Run:
     python augmented/notebooks/build_sesion_francisco_notebook.py
 Then execute in-place:
     jupyter nbconvert --to notebook --execute --inplace \
-        augmented/notebooks/sesion_francisco.ipynb
+        augmented/notebooks/18_sesion_francisco.ipynb
 """
 import os
 import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "sesion_francisco.ipynb")
+OUT = os.path.join(HERE, "18_sesion_francisco.ipynb")
 
 nb = nbf.v4.new_notebook()
 nb.metadata['kernelspec'] = {
@@ -34,7 +34,7 @@ def code(src):
 
 
 # ===================================================================
-md(r"""# El certificado computable
+md(r"""# Notebook 18 - El certificado computable
 
 Sesión del 9 de julio de 2026. Cinco actos: una corrección al Gibbs
 (demostrada en vivo), la primera cota penalizada del problema, el mapa con
@@ -193,6 +193,17 @@ sacó. Por eso $U_{pen}$ sigue siendo techo (OPT $\le U_{pen}$) pero más bajo
 que $U_{PI}$: una cota más apretada. El teorema (Brown–Smith–Sun): cualquier
 multa así construida da cota válida; elegirla bien solo la aprieta más. El
 certificado es greedy$/U_{pen}$ — y nadie había traído esta técnica aquí.""")
+
+md(r"""Falta nombrar la pieza que el resto de la sesión mueve. La multa no se elige a
+mano: se construye a partir de una función $\hat V$. Una $\hat V$ es una corazonada
+del valor-a-futuro — dado lo observado hasta ahora, cuánta utilidad espera uno
+todavía cobrar con los tests que quedan. La penalización de cada paso es cuánto
+cambia esa corazonada al ver el resultado del test. La $\hat V$ es la única perilla
+del método: el teorema garantiza que cualquiera da cota válida, y una mejor solo la
+aprieta. La $\hat V$ ideal es el valor-a-futuro exacto —con ella la cota tocaría el
+óptimo—, pero calcularlo es resolver el problema; por eso la investigación busca una
+$\hat V$ barata que se le acerque. La de este ejemplo, $umax$, es la más simple que
+sirve: supone que al final se acredita a todos los que aún podrían estar limpios.""")
 
 code(r"""from augmented.solver import solve_optimal_dapts
 from augmented.greedy import greedy_myopic_expected_utility
@@ -425,14 +436,16 @@ El certificado es a la vez el teorema y el producto.
 
 La pregunta 1 (§7) ya tiene una primera respuesta, y no la escribí yo. Monté
 un bucle de investigación autónomo (`dapts-autoresearch`) cuya única libertad
-es editar $\hat V$; el teorema de Brown–Smith–Sun es la jaula — cualquier
-$\hat V$ da cota válida, así que el agente no puede romper la corrección
-aunque quiera. Corrió toda la noche y encontró una $\hat V$ **escalable** que
-aprieta en B=3, donde $umax$ era plano. La idea: en vez de resolver el
-value-to-go óptimo (que enumera el soporte conjunto y no escala), lo estima
-con un lookahead de un paso **correlacionado por componentes conexas** — usa
-la PMF exacta del conteo por componente, que es barata, sin tocar el conjunto
-global. Es la $\hat V$ con profundidad $d(B)$ sobre marginales que buscábamos.""")
+es editar $\hat V$ —esa corazonada del valor-a-futuro del acto 2—; el teorema
+de Brown–Smith–Sun es la jaula: cualquier $\hat V$ da cota válida, así que el
+agente no puede romper la corrección aunque quiera. Corrió toda la noche y encontró una $\hat V$ **escalable** que
+aprieta en B=3, donde $umax$ era plano. La idea: en vez de calcular el
+valor-a-futuro exacto (que enumera todos los perfiles de infección posibles y
+no escala), lo estima mirando un solo paso adelante, pero **respetando la
+correlación dentro de cada grupo de personas que aparecen juntas en los
+tests**. Esa correlación se calcula grupo por grupo, que es barato, sin tocar
+el conjunto global. Es la $\hat V$ con profundidad $d(B)$ sobre marginales que
+buscábamos.""")
 
 code(r"""CFGS = [(4, 2, 2, 3), (5, 2, 3, 3), (5, 3, 3, 2), (6, 2, 3, 2), (6, 3, 3, 2)]
 

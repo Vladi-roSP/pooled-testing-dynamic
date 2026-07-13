@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Construye notebook_maestro.ipynb (REEMPLAZA el anterior) como CARTAS DE
+"""Construye 12_maestro.ipynb (REEMPLAZA el anterior) como CARTAS DE
 DISCUSION: cada carta = figura + minimo texto + preguntas abiertas. Lee las
 celdas verificadas del workflow (discusion_cells.json: lista de
 {id,title,setup_md,code,questions_md}).
@@ -13,7 +13,7 @@ import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CELLS = os.path.join(HERE, "maestro_cells.json")
-OUT = os.path.join(HERE, "notebook_maestro.ipynb")
+OUT = os.path.join(HERE, "12_maestro.ipynb")
 
 
 def _u(s):

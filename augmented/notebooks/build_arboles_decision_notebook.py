@@ -1,4 +1,4 @@
-"""Build arboles_decision.ipynb — árboles de decisión para intuición.
+"""Build 20_arboles_decision.ipynb — árboles de decisión para intuición.
 
 Rediseño de los árboles de las primeras sesiones: verticales, con la RUTA
 realizada resaltada para un perfil concreto, y greedy vs óptimo lado a lado
@@ -8,13 +8,13 @@ GreedyPolicy) y tree_visualizer (render_tree_path).
 Run:
     python augmented/notebooks/build_arboles_decision_notebook.py
     jupyter nbconvert --to notebook --execute --inplace \
-        augmented/notebooks/arboles_decision.ipynb
+        augmented/notebooks/20_arboles_decision.ipynb
 """
 import os
 import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "arboles_decision.ipynb")
+OUT = os.path.join(HERE, "20_arboles_decision.ipynb")
 
 nb = nbf.v4.new_notebook()
 nb.metadata['kernelspec'] = {

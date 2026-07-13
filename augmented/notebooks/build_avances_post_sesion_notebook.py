@@ -1,4 +1,4 @@
-"""Build avances_post_sesion.ipynb — avances y próximos pasos tras la sesión con
+"""Build 19_avances_post_sesion.ipynb — avances y próximos pasos tras la sesión con
 Francisco del 9 de julio de 2026.
 
 Pieza central: el ejemplo de separación estático vs dinámico-aumentado que
@@ -11,13 +11,13 @@ Run:
     python augmented/notebooks/build_avances_post_sesion_notebook.py
 Then execute in-place:
     jupyter nbconvert --to notebook --execute --inplace \
-        augmented/notebooks/avances_post_sesion.ipynb
+        augmented/notebooks/19_avances_post_sesion.ipynb
 """
 import os
 import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "avances_post_sesion.ipynb")
+OUT = os.path.join(HERE, "19_avances_post_sesion.ipynb")
 
 nb = nbf.v4.new_notebook()
 nb.metadata['kernelspec'] = {

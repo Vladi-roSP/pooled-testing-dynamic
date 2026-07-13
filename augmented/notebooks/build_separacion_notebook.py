@@ -1,4 +1,4 @@
-"""Build notebook_separacion.ipynb — presentación didáctica de la separación
+"""Build 14_separacion.ipynb — presentación didáctica de la separación
 (la jerarquía U_single <= ... <= U_max y el beneficio del conteo) para discutir
 con Francisco. Construido sobre el código CORREGIDO (hierarchy_experiment.py) y
 los resultados en results/hierarchy/.
@@ -12,13 +12,13 @@ Run:
     python augmented/notebooks/build_separacion_notebook.py
 Then execute in-place:
     jupyter nbconvert --to notebook --execute --inplace \
-        augmented/notebooks/notebook_separacion.ipynb
+        augmented/notebooks/14_separacion.ipynb
 """
 import os
 import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "notebook_separacion.ipynb")
+OUT = os.path.join(HERE, "14_separacion.ipynb")
 
 nb = nbf.v4.new_notebook()
 nb.metadata['kernelspec'] = {

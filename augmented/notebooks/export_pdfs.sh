@@ -4,7 +4,7 @@
 #
 # Uso:
 #   ./export_pdfs.sh                       # exporta la lista por defecto
-#   ./export_pdfs.sh sesion_francisco      # exporta augmented/notebooks/sesion_francisco.ipynb
+#   ./export_pdfs.sh sesion_francisco      # exporta augmented/notebooks/18_sesion_francisco.ipynb
 #   ./export_pdfs.sh nb1 nb2 nb3           # varios (sin extension .ipynb)
 #
 # Por cada notebook imprime OK/FALLO y el tamano del PDF resultante.

@@ -1915,6 +1915,6 @@ md("""\
 """)
 
 # Write notebook
-with open('paper_findings.ipynb', 'w') as f:
+with open('06_paper_findings.ipynb', 'w') as f:
     nbf.write(nb, f)
-print(f'Wrote paper_findings.ipynb with {len(nb.cells)} cells')
+print(f'Wrote 06_paper_findings.ipynb with {len(nb.cells)} cells')

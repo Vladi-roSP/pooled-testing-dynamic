@@ -1,4 +1,4 @@
-"""Build notebook_intuicion_greedy.ipynb — intuición visual de QUÉ hace el greedy
+"""Build 16_intuicion_greedy.ipynb — intuición visual de QUÉ hace el greedy
 en ejemplos grandes (n=40), más el contexto de escalabilidad y certificación.
 
 Idea: el greedy corre a escala (variante gibbs/secuencial), pero "qué hace" se
@@ -8,13 +8,13 @@ visualiza cómo limpia a la gente, a quién prioriza y por qué.
 Run:
     python augmented/notebooks/build_intuicion_notebook.py
     jupyter nbconvert --to notebook --execute --inplace \
-        augmented/notebooks/notebook_intuicion_greedy.ipynb
+        augmented/notebooks/16_intuicion_greedy.ipynb
 """
 import os
 import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "notebook_intuicion_greedy.ipynb")
+OUT = os.path.join(HERE, "16_intuicion_greedy.ipynb")
 
 nb = nbf.v4.new_notebook()
 nb.metadata['kernelspec'] = {
@@ -231,7 +231,7 @@ paso es la cota superior por relajación de información: un valor $U^+ \ge U^D_
 computable a n=50, de modo que $(U^+ - \text{greedy})/U^+$ certifique el hueco sin
 calcular el óptimo. El detalle de escalabilidad e inferencia está en
 `escalabilidad_e_inferencia.md`; el descubrimiento del horizonte, en
-`notebook_descubrimiento.ipynb`.""")
+`15_descubrimiento.ipynb`.""")
 
 nbf.write(nb, OUT)
 print(f'wrote {OUT} ({len(nb.cells)} cells)')

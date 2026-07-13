@@ -1,17 +1,17 @@
-"""Build notebook_competencia.ipynb — los algoritmos compiten en UNA instancia y
+"""Build 17_competencia.ipynb — los algoritmos compiten en UNA instancia y
 se ve, paso a paso, cómo difiere su comportamiento. Cuatro competidores: el óptimo
 (DP), el greedy miope, el greedy con conteo y el greedy con lookahead.
 
 Run:
     python augmented/notebooks/build_competencia_notebook.py
     jupyter nbconvert --to notebook --execute --inplace \
-        augmented/notebooks/notebook_competencia.ipynb
+        augmented/notebooks/17_competencia.ipynb
 """
 import os
 import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "notebook_competencia.ipynb")
+OUT = os.path.join(HERE, "17_competencia.ipynb")
 nb = nbf.v4.new_notebook()
 nb.metadata['kernelspec'] = {'display_name': 'Python 3', 'language': 'python', 'name': 'python3'}
 def md(s): nb.cells.append(nbf.v4.new_markdown_cell(s))

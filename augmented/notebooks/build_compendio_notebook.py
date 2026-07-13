@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Construye notebook_compendio.ipynb: un ejemplo clave por notebook previo,
+"""Construye 11_compendio.ipynb: un ejemplo clave por notebook previo,
 grafica primero, texto breve. Lee compendio_cells.json ({cards:[{id,title,
 intro_md,code}]}).
 """
@@ -12,7 +12,7 @@ import nbformat as nbf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CELLS = os.path.join(HERE, "compendio_cells.json")
-OUT = os.path.join(HERE, "notebook_compendio.ipynb")
+OUT = os.path.join(HERE, "11_compendio.ipynb")
 
 
 def _u(s):

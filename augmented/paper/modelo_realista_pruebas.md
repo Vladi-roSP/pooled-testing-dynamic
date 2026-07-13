@@ -1,7 +1,7 @@
 # El modelo realista de pruebas: ideas para la §3
 
 Notas de exploración para la rama del modelo realista (la §3 del notebook
-`avances_post_sesion.ipynb`). Hoy el modelo idealiza el conteo como exacto; una
+`19_avances_post_sesion.ipynb`). Hoy el modelo idealiza el conteo como exacto; una
 prueba real —qPCR, biomarcadores— lo entrega con ruido. La pregunta es si la
 separación de la §1 (dinámico aumentado vs óptimo estático) sobrevive a ese
 ruido, y cuánto aguanta.

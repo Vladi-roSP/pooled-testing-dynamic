@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Construye notebook_resultados.ipynb (graficas primero) a partir de las celdas
+"""Construye 13_resultados.ipynb (graficas primero) a partir de las celdas
 verificadas por el workflow (resultados_cells.json: lista de {id,title,intro_md,
 code,takeaway_md}).
 """
@@ -16,7 +16,7 @@ def _u(s):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CELLS = os.path.join(HERE, "resultados_cells.json")
-OUT = os.path.join(HERE, "notebook_resultados.ipynb")
+OUT = os.path.join(HERE, "13_resultados.ipynb")
 
 PORTADA = r"""# Notebook 13 - Resultados del proyecto en tres graficas parametrizables
 
