@@ -206,6 +206,82 @@ $B\,q < 1-(1-q)^{2^{B-1}}$ — cobertura exponencial en el presupuesto.
 **Estado:** este ejemplo, solo, ya es un resultado del paper. Francisco envía
 el resultado del extremo estático; aquí queda la instancia y la verificación.""")
 
+# -------------------------------------------------------------------
+md(r"""### 1.1 Atribución: ¿dinamismo o conteo?
+
+**Intuición.** El ejemplo mueve dos palancas a la vez: la estrategia pasa de
+*estática* a *dinámica* y la prueba pasa de *binaria* (sano / no sano) a
+*aumentada* (el conteo exacto). Francisco pidió no confundirlas. La forma limpia
+de separarlas es medir el peldaño intermedio: el óptimo **dinámico pero
+binario** —adaptativo, pero sin leer el conteo—. Si ese peldaño ya alcanza al
+aumentado, el mérito es del dinamismo; si se queda pegado al estático, el mérito
+es del conteo.
+
+El solver exacto tiene justo esa perilla: `cap=1` cuantiza cada prueba a un bit
+(conteo 0 contra conteo ≥1), `cap=None` deja el conteo completo. Con eso se
+computan los tres óptimos sobre la misma instancia.""")
+
+md(r"""**Afirmación.** Sobre una instancia finita homogénea (n=5, G=4, B=4), el
+óptimo dinámico binario **es idéntico** al estático individual: adaptar sin
+contar no gana nada. Todo el beneficio dinámico —y crece con la prevalencia— lo
+aporta el conteo.""")
+
+code(r"""from augmented.solver import solve_optimal_dapts
+
+# instancia finita homogénea (n<=14 para el DP exacto): ilustra la §1 con G chico.
+# tres óptimos por la perilla cap del solver: estático (analítico B*q),
+# dinámico binario (cap=1: 0 vs >=1), dinámico con conteo (cap=None).
+n_d, G_d, B_d = 5, 4, 4
+qs_d = [0.10, 0.15, 0.20, 0.25, 0.30]
+u_est, u_bin, u_cont = [], [], []
+for q in qs_d:
+    p = [1.0 - q] * n_d; u = [1.0] * n_d
+    s = B_d * q                                            # estático individual
+    vb = solve_optimal_dapts(p, u, B_d, G_d, cap=1)[0]     # dinámico BINARIO
+    vc = solve_optimal_dapts(p, u, B_d, G_d, cap=None)[0]  # dinámico CONTEO
+    # autoverificación: adaptar con binario no supera al estático; el conteo domina
+    assert abs(vb - s) < 1e-9, f'din-binario != estático en q={q}: {vb} vs {s}'
+    assert vc >= vb - 1e-9, f'el conteo quedó por debajo del binario en q={q}'
+    u_est.append(s); u_bin.append(vb); u_cont.append(vc)
+
+print('q      estático  din-binario  din-conteo   lo que aporta el conteo')
+for q, s, b, c in zip(qs_d, u_est, u_bin, u_cont):
+    print(f'{q:<5}  {s:>8.3f}  {b:>11.3f}  {c:>10.3f}   {c - b:+.3f}')
+print()
+print('autoverificación OK: din-binario == estático en toda la rejilla')
+print('(adaptar sin contar no aporta); el beneficio dinámico es todo del conteo.')""")
+
+code(r"""x = np.arange(len(qs_d)); w = 0.27
+fig, ax = plt.subplots(figsize=(7.5, 3.8))
+ax.bar(x - w, u_est, w, color=GRIS, label='estático (individual)')
+ax.bar(x, u_bin, w, color=TINTA, alpha=0.5, label='dinámico binario (0 vs ≥1)')
+ax.bar(x + w, u_cont, w, color=AZUL, label='dinámico con conteo (aumentado)')
+ax.set_xticks(x); ax.set_xticklabels([str(q) for q in qs_d])
+ax.set_xlabel('prob. de estar sano  q'); ax.set_ylabel('utilidad esperada / u')
+ax.set_title('El beneficio viene del conteo, no del dinamismo (n=5, G=4, B=4)',
+             fontsize=10)
+ax.legend(fontsize=8, loc='upper left')
+ax.annotate('binario = estático:\nadaptar sin contar no aporta',
+            (x[3], u_bin[3]), textcoords='offset points', xytext=(-4, 26),
+            fontsize=7.5, color=TINTA, ha='center',
+            arrowprops=dict(arrowstyle='->', color=TINTA, lw=0.8))
+fig.tight_layout(); plt.show()""")
+
+md(r"""**Lectura.** Las dos primeras barras coinciden exactamente en cada
+prevalencia: con pruebas binarias, ser dinámico no compra nada sobre el estático
+individual —cada prueba individual es i.i.d., no hay nada a qué adaptarse, y los
+grupos binarios no ayudan con prevalencia alta—. La tercera barra, el conteo, es
+la única que despega, y su ventaja crece al subir $q$. Esto aísla la tesis: la
+separación de la §1 no es "premio por ser dinámico", es **premio por contar**;
+el dinamismo es el vehículo que permite *actuar* sobre el conteo.""")
+
+md(r"""**Para discutir.** El intermedio limpio resultó ser una igualdad exacta
+(binario = estático), no un valor intermedio. ¿Conviene para el paper reportar
+esta descomposición como *tabla de atribución* —estático / dinámico-binario /
+dinámico-conteo— para cerrar de antemano la objeción de "movieron dos variables
+a la vez"? ¿Y hasta qué prevalencia $q$ aguanta la igualdad binario = estático
+antes de que el grupo binario empiece a pagar?""")
+
 # ===================================================================
 md(r"""## 2. Los regímenes tratables y un algoritmo eficiente
 
@@ -397,6 +473,50 @@ t2 = time.perf_counter() - t0
 print(f'cadena de {m2} pools solapados (n={n2}): marginales exactas en '
       f'{t2*1e3:.1f} ms (la enumeración sería 2^{n2})')""")
 
+md(r"""### El costo, en una imagen
+
+**Intuición.** Los números de arriba dicen "milisegundos hasta n=6,000", pero el
+contraste solo se siente al lado de lo que costaría enumerar. La fuerza bruta
+recorre $2^n$ perfiles; el DP tratable hace un barrido lineal. Puestos en la
+misma escala de tiempo, uno se queda pegado al piso y el otro atraviesa el techo
+—cruza la edad del universo antes de n=90—.""")
+
+code(r"""# el DP tratable medido a varios n, contra la enumeración 2^n analítica
+ns_dp = [50, 100, 200, 500, 1000, 2000, 4000, 6000]
+t_dp = []
+for nn in ns_dp:
+    rng_s = _r.Random(nn)
+    ps = [rng_s.uniform(0.2, 0.8) for _ in range(nn)]
+    t0 = time.perf_counter(); marginales_k_de_m(ps, 3)
+    t_dp.append(time.perf_counter() - t0)
+
+RATE = 1e9                                   # perfiles/s: cota MUY optimista
+ns_bf = list(range(10, 116, 5))
+t_bf = [2.0 ** nn / RATE for nn in ns_bf]
+
+fig, ax = plt.subplots(figsize=(7.2, 3.9))
+ax.plot(ns_dp, t_dp, marker='o', ms=4, color=AZUL, label='DP tratable (medido)')
+ax.plot(ns_bf, t_bf, ls='--', color=TINTA, label='enumeración 2^n a 1e9/s (analítica)')
+for yv, tx in [(1.0, '1 s'), (3.15e7, '1 año'), (4.35e17, 'edad del universo')]:
+    ax.axhline(yv, color=GRIS, lw=0.7, ls=':')
+    ax.text(11, yv * 2.2, tx, fontsize=7, color=GRIS)
+ax.set_xscale('log'); ax.set_yscale('log')
+ax.set_xlabel('n (personas)'); ax.set_ylabel('tiempo (s)')
+ax.set_ylim(1e-6, 1e25)
+ax.set_title('Inferencia exacta: el DP tratable es casi plano; 2^n explota',
+             fontsize=10)
+ax.legend(fontsize=8, loc='center right')
+fig.tight_layout(); plt.show()
+n_univ = next(nn for nn in ns_bf if 2.0 ** nn / RATE > 4.35e17)
+print(f'DP laminar a n=6,000: {t_dp[-1]*1e3:.0f} ms.')
+print(f'la enumeración 2^n rebasa la edad del universo ya en n≈{n_univ}.')""")
+
+md(r"""**Lectura.** La línea del DP recorre cuatro órdenes de magnitud de $n$ sin
+salir de los milisegundos; la de la fuerza bruta cruza "un año" cerca de n=60 y
+la edad del universo antes de n=90. No es que el DP sea "más rápido": resuelve
+un problema de tamaño lineal donde el ingenuo se enfrenta a uno exponencial. Esa
+es toda la razón por la que los regímenes tratables importan.""")
+
 md(r"""**Dónde encaja esto.** El código de producción (`bayesian.py`) ya explota el
 primer peldaño de esta escalera — componentes disjuntas —; laminar y cadena son
 los dos peldaños siguientes, y el treewidth acotado general es la misma idea con
@@ -407,6 +527,13 @@ separadores.
 
 El paper mandable es la terna: el ejemplo de separación de la sección 1, este
 algoritmo eficiente sobre los regímenes tratables, y una columna empírica.""")
+
+md(r"""**Para discutir.** Estos dos peldaños —laminar y cadena— son casos de
+*treewidth acotado*: el separador es de un bit. La pregunta operativa es cuánto
+treewidth toleran las instancias reales antes de que el separador crezca y el DP
+vuelva a ser exponencial. ¿Vale la pena, para la columna empírica, medir el
+treewidth efectivo de las historias que el greedy genera —y así saber en qué
+fracción de los pasos la inferencia exacta es de verdad barata?""")
 
 # ===================================================================
 md(r"""## 3. El modelo realista de pruebas: ¿sobrevive la separación al ruido?
@@ -579,6 +706,32 @@ print()
 print('La caída de 25 a 5 perfiles ES el valor de contar: el conteo exacto')
 print('descarta 20 mundos que el bit binario deja en pie.')""")
 
+code(r"""sizes = [2 ** 5, len(fibra_binaria), len(fibra_conteo)]
+etqs = ['posibles a priori\n(2^5 = 32)', 'consistentes con\ntest binario (≥1)',
+        'consistentes con\nconteo exacto (=1)']
+fig, ax = plt.subplots(figsize=(6.2, 3.2))
+ax.barh(range(3), sizes, color=[GRIS, TINTA, AZUL], alpha=0.85)
+ax.set_yticks(range(3)); ax.set_yticklabels(etqs, fontsize=8)
+ax.invert_yaxis()
+for i, s in enumerate(sizes):
+    ax.text(s + 0.5, i, str(s), va='center', fontsize=9, color=TINTA)
+ax.set_xlabel('# de perfiles consistentes'); ax.set_xlim(0, 34)
+ax.set_title('El conteo exacto descarta mundos que el bit binario deja en pie',
+             fontsize=10)
+fig.tight_layout(); plt.show()""")
+
+md(r"""**Lectura.** El bit binario reduce los 32 mundos a 25; el conteo exacto los
+deja en 5. Esa caída extra —de 25 a 5— es, medida en mundos descartados, el
+valor de contar: la misma evidencia (dos pruebas que se cruzan en la persona 2)
+descarta cuatro veces más incertidumbre cuando devuelve el número en vez del
+bit. Todos-infectados sobrevive al bit binario (da ≥1 en ambas) pero no al
+conteo (daría 3 en A, no 1), y por eso desaparece.""")
+
+md(r"""**Para discutir.** Aquí el conteo colapsa la fibra de 25 a 5 en un caso de
+juguete. ¿Sirve el cociente entre tamaños de fibra —binaria contra conteo— como
+un proxy escalar del "valor de contar" de una historia, y se puede ligar a la
+reducción de entropía que ya usa el β de la §5 como bono de información?""")
+
 # ===================================================================
 md(r"""## 5. El parámetro β: un lookahead barato
 
@@ -658,9 +811,9 @@ Del consejo de la sesión, cuatro reglas:
 
 1. No mover dos variables a la vez. El beneficio tiene dos fuentes —ser dinámico
    y ser aumentado—; el ejemplo de la sección 1 mueve las dos juntas contra el
-   mejor estático, que es la separación pedida. Para atribuir cuánto pone cada
-   palanca, la comparación intermedia es el óptimo dinámico *binario* (donde la
-   búsqueda de sanos por conteo no está disponible): queda como celda pendiente.
+   mejor estático, que es la separación pedida. La atribución ya está hecha en la
+   §1.1: el óptimo dinámico *binario* (adaptativo, sin conteo) resulta idéntico
+   al estático, así que toda la ventaja es del conteo, no del dinamismo.
 2. La dureza #P del posterior y la enumeración de la fibra van como trabajo
    futuro o apéndice, no en la línea principal.
 3. Lo puramente dinámico (sin conteo) se refiere al trabajo previo del grupo.
