@@ -20,7 +20,7 @@ def _u(s):
     return html.unescape(s or "")
 
 
-PORTADA = r"""# Notebook 12 - Cartas de discusion — Dynamic Augmented Adaptive Group Counting
+PORTADA = r"""# Notebook 12 - Cartas de discusion: ejemplos chicos con preguntas abiertas
 
 Cada carta es un ejemplo chico con su figura y un par de preguntas abiertas,
 pensado para discutir y abrir direcciones. Poco texto: la figura manda.

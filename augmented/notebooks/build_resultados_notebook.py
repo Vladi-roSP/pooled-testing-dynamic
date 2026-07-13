@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CELLS = os.path.join(HERE, "resultados_cells.json")
 OUT = os.path.join(HERE, "notebook_resultados.ipynb")
 
-PORTADA = r"""# Notebook 13 - Resultados (graficas) — Dynamic Augmented Adaptive Group Counting
+PORTADA = r"""# Notebook 13 - Resultados del proyecto en tres graficas parametrizables
 
 Tres resultados del proyecto, cada uno como una grafica. Cada celda tiene sus
 parametros al inicio: cambialos y vuelve a correr para explorar. Todo sale de
