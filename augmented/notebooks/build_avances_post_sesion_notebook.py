@@ -580,7 +580,79 @@ print('La caída de 25 a 5 perfiles ES el valor de contar: el conteo exacto')
 print('descarta 20 mundos que el bit binario deja en pie.')""")
 
 # ===================================================================
-md(r"""## 5. Encuadre para publicar
+md(r"""## 5. El parámetro β: un lookahead barato
+
+**Intuición.** El greedy miope elige en cada paso el pool que *limpia* más
+ahora: maximiza $P(r=0)\cdot\sum u$. El beta-greedy le suma un bono de
+información, $\beta\cdot(\text{ganancia de información})$, que lo empuja a
+veces a probar un pool que limpia menos hoy pero *informa* mejor para el paso
+siguiente. Es un proxy barato del lookahead: sin resolver el futuro, premia
+mirar. Debería ayudar justo donde la miopía duele — la misma instancia del
+notebook de árboles, donde el greedy abría con la persona más valiosa y perdía.""")
+
+md(r"""**Afirmación.** En esa instancia, subir β desplaza el pool de apertura del
+greedy hacia el pool informativo que elige el óptimo, y recupera ~85% del hueco
+greedy→óptimo. Pero es un hump: demasiado β se pasa de rosca y cae por debajo
+del greedy plano.""")
+
+code(r"""import random
+from augmented.solver import solve_optimal_dapts
+from augmented.state_reward_greedy import (greedy_myopic_beta_expected_utility as beu,
+                                           _beta_best_pool)
+from augmented.core import mask_str
+
+# misma instancia que el notebook de árboles (n=4, B=2, G=2, semilla 185)
+rb = random.Random(185); nb_, Bb, Gb = 4, 2, 2
+pb = [rb.uniform(0.15, 0.7) for _ in range(nb_)]
+ub = [rb.uniform(1.0, 4.0) for _ in range(nb_)]
+opt_b = solve_optimal_dapts(pb, ub, Bb, Gb)[0]
+greedy_plano = beu(pb, ub, Bb, Gb, 0.0)                 # beta=0 == greedy miope
+
+betas = [round(0.25 * k, 2) for k in range(0, 33)]      # 0..8
+eus = [beu(pb, ub, Bb, Gb, b, 'entropy') for b in betas]
+best_eu = max(eus); best_beta = betas[eus.index(best_eu)]
+
+# autoverificación: beta>0 mejora al greedy plano y ninguna beta supera al óptimo
+assert best_eu > greedy_plano + 1e-6, 'ningún beta ayuda en esta instancia'
+assert best_eu <= opt_b + 1e-9, 'beta-greedy superó al óptimo (imposible)'
+recuperado = (best_eu - greedy_plano) / (opt_b - greedy_plano)
+print(f'óptimo={opt_b:.3f}  greedy plano (β=0)={greedy_plano:.3f}  '
+      f'mejor β={best_beta} → EU={best_eu:.3f}')
+print(f'β recupera {recuperado:.0%} del hueco greedy→óptimo')
+for b in (0.0, 1.0, 3.0, 5.0):
+    print(f'  β={b}: EU={beu(pb,ub,Bb,Gb,b,"entropy"):.3f}  '
+          f'abre con {mask_str(_beta_best_pool(pb,ub,Gb,nb_,0,b,"entropy"), nb_)}')""")
+
+code(r"""fig, ax = plt.subplots(figsize=(6.5, 3.6))
+ax.plot(betas, eus, color=AZUL, lw=1.8)
+ax.axhline(opt_b, color=GRIS, ls='--', lw=1.2, label='óptimo (techo)')
+ax.axhline(greedy_plano, color=TINTA, ls=':', lw=1.0, label='greedy plano (β=0)')
+ax.plot([best_beta], [best_eu], 'o', color=AMBAR, ms=8, zorder=3)
+ax.annotate(f'pico β={best_beta}\n{best_eu:.2f}', (best_beta, best_eu),
+            textcoords='offset points', xytext=(8, -4), fontsize=8, color=AMBAR)
+ax.set_xlabel('β (peso del bono de información)')
+ax.set_ylabel('utilidad esperada')
+ax.set_title('β como lookahead barato: recupera la miopía, pero es un hump',
+             fontsize=10)
+ax.legend(fontsize=8, loc='lower right')
+fig.tight_layout(); plt.show()""")
+
+md(r"""**Lectura.** β funciona porque hace de lookahead de un paso: al crecer,
+el pool de apertura salta de la persona más valiosa (miope) al par informativo
+que el óptimo elige, y la utilidad sube casi hasta el techo. Pero es frágil en
+dos sentidos. Es un hump: pasado el punto dulce, β sobre-pondera la información
+y elige peor que el greedy plano. Y a prevalencia alta se neutraliza —cuando
+casi nadie está sano, $P(r=0)$ colapsa y el bono de limpieza domina, así que
+β deja de mover nada—. Es un proxy útil pero que hay que sintonizar.""")
+
+md(r"""**Para discutir.** β y la V̂ de la cota penalizada son la misma idea —un
+proxy barato del valor a futuro— por dos caminos: β modifica la *política*, V̂
+modifica la *cota*. ¿Es β un caso particular de la penalización? Y su punto
+dulce (β≈3 aquí) con el hump: ¿la β correcta escala con el horizonte, como la
+profundidad d(B) que buscamos para la V̂?""")
+
+# ===================================================================
+md(r"""## 6. Encuadre para publicar
 
 Del consejo de la sesión, cuatro reglas:
 
@@ -596,7 +668,7 @@ Del consejo de la sesión, cuatro reglas:
    regímenes tratables + evidencia empírica.""")
 
 # ===================================================================
-md(r"""## 6. Cómo conecta con el certificado
+md(r"""## 7. Cómo conecta con el certificado
 
 El paper cercano y la dirección de fondo no compiten. El ejemplo de separación
 mide *cuánto vale* el conteo en un caso resoluble; la línea del certificado mide
