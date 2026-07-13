@@ -19,7 +19,7 @@ def _u(s):
     return html.unescape(s or "")
 
 
-PORTADA = r"""# Compendio de ejemplos — Dynamic Augmented Adaptive Group Counting
+PORTADA = r"""# Notebook 11 - Compendio de ejemplos — Dynamic Augmented Adaptive Group Counting
 
 Un ejemplo clave de cada notebook del proyecto, contado con su figura y un par de
 frases. La grafica manda; el texto solo la enmarca. Todo sale de correr el codigo

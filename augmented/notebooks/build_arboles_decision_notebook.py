@@ -30,7 +30,7 @@ def code(src):
 
 
 # ===================================================================
-md(r"""# Árboles de decisión: greedy vs óptimo, paso a paso
+md(r"""# Notebook 20 - Árboles de decisión: greedy vs óptimo, paso a paso
 
 Un árbol de decisión hace visible una estrategia dinámica: cada nodo es una
 prueba, cada rama es un conteo observado, y cada camino de la raíz a una hoja

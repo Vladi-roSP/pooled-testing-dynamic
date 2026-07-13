@@ -33,7 +33,7 @@ def code(src):
 
 
 # ===================================================================
-md(r"""# Avances y próximos pasos — tras la sesión del 9 de julio
+md(r"""# Notebook 19 - Avances y próximos pasos — tras la sesión del 9 de julio
 
 La sesión reorientó el trabajo hacia un paper concreto y cercano. La pieza
 central es un ejemplo de **separación**: una familia mínima donde una

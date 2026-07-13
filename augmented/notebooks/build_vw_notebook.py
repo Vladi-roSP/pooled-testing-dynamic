@@ -23,7 +23,7 @@ def code(src):
 
 
 # ---------------------------------------------------------------------
-md(r"""# Notebook 06 - VW super-nodos
+md(r"""# Notebook 08 - VW super-nodos
 
 **Objetivo.** Formalizar la idea VW de super-nodos y separar equivalencias de
 limitaciones reales.

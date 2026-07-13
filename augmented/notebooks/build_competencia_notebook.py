@@ -18,7 +18,7 @@ def md(s): nb.cells.append(nbf.v4.new_markdown_cell(s))
 def code(s): nb.cells.append(nbf.v4.new_code_cell(s))
 
 # ===================================================================
-md(r"""# Los algoritmos compiten: una instancia, paso a paso
+md(r"""# Notebook 17 - Los algoritmos compiten: una instancia, paso a paso
 
 Para *ver* en qué se diferencian los algoritmos, los ponemos a competir en una sola
 instancia chica y trazamos qué hace cada uno: qué pool elige en cada paso, qué

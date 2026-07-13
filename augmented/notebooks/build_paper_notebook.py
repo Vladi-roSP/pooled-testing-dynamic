@@ -18,7 +18,7 @@ def md(src):
 # CELL 0: Title and reading guide
 # ============================================================
 md("""\
-# Notebook 08 - DAPTS paper findings
+# Notebook 06 - DAPTS paper findings
 
 **Objetivo.** Ordenar los resultados en narrativa de paper, desde intuicion
 hasta robustez y apendices.

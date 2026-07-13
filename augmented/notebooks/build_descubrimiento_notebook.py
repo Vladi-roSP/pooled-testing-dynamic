@@ -33,7 +33,7 @@ def code(src):
 
 
 # ===================================================================
-md(r"""# Un descubrimiento empírico: el valor de contar es un fenómeno de horizonte
+md(r"""# Notebook 15 - Un descubrimiento empírico: el valor de contar es un fenómeno de horizonte
 
 **La pregunta.** No "¿cuánto vale contar?" sino "¿de qué depende?". Buscamos una
 regularidad no obvia en cómo se comporta el algoritmo, no una descripción.

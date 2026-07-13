@@ -30,7 +30,7 @@ def code(src):
 
 
 # ===================================================================
-md(r"""# Qué hace el greedy en grande: intuición visual
+md(r"""# Notebook 16 - Qué hace el greedy en grande: intuición visual
 
 El greedy corre a escala (n=50 en segundos con la variante gibbs o secuencial).
 La pregunta de este notebook no es *si* corre, sino **qué hace** cuando corre, y

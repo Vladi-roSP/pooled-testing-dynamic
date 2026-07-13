@@ -34,7 +34,7 @@ def code(src):
 
 
 # ===================================================================
-md(r"""# La separación, paso a paso
+md(r"""# Notebook 14 - La separación, paso a paso
 
 **Objetivo.** Presentar con cuidado la jerarquía
 $U^{\text{single}} \le U^s_{NO} \le U^s_{O} \le U^D \le U^D_A \le U^{\max}$
