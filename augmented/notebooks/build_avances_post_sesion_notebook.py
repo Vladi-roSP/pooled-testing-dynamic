@@ -107,17 +107,21 @@ print(f'  estático  U/u = B*q          = {est:.3f}')
 print(f'  din. aumentado  U/u = 1-(1-q)^kG   = {din:.3f}')
 print(f'  ventaja del aumentado: {din-est:+.3f}u  ({100*(din/est-1):+.0f}%)')""")
 
-md(r"""**El matiz del exponente.** Francisco escribió la cobertura como
-$kG\approx B$; la real es $kG\approx B\,G$, un factor $\sim G$ mayor. Importa:
-por Bernoulli $1-(1-q)^{n}\le n\,q$, así que con cobertura solo $B$ el aumentado
-**nunca** ganaría. Con la cobertura verdadera gana. Corregir el exponente
-refuerza la tesis.""")
+md(r"""**Un cambiecito que refuerza el ejemplo.** El mensaje original aproximaba
+la cobertura como $kG \sim B$; contando con cuidado, las $k = B-\log_2 G$
+pruebas frescas cubren $kG = (B-\log_2 G)\,G \approx B\,G$ personas. El factor
+$G$ no es cosmético: por Bernoulli $1-(1-q)^{B}\le B\,q$ siempre, así que con
+cobertura $\sim B$ el aumentado no ganaría nunca. Con la cobertura real gana con
+holgura — abajo, los dos exponentes sobre el ejemplo ancla.""")
 
-code(r"""# Bernoulli: con exponente B el aumentado jamás ganaría (1-(1-q)^B <= B*q)
-qs = np.linspace(0.02, 0.48, 25); Bs = np.arange(2, 15)
-peor = max(float((1-(1-q)**b) - b*q) for q in qs for b in Bs)
-print(f'max sobre la rejilla de (1-(1-q)^B) - B*q = {peor:.4f}   (<=0 => con kG~B nunca gana)')
-print('con el exponente REAL kG=(B-log2 G)*G, en cambio, la separación sí ocurre (abajo)')""")
+code(r"""# los dos exponentes sobre el ejemplo ancla (q=0.1, G=16, B=6)
+con_B = 1 - (1 - q) ** B          # cobertura ~B (la aproximación del mensaje)
+# autoverificación (Bernoulli): con cobertura ~B nunca se le gana al estático
+assert all(1 - (1 - qq) ** b <= b * qq + 1e-12
+           for qq in np.linspace(0.02, 0.48, 25) for b in range(2, 15))
+print(f'estático exacto          B·q = {est:.3f}')
+print(f'aumentado, exponente ~B ({B:>2}): {con_B:.3f}   pierde siempre (Bernoulli)')
+print(f'aumentado, exponente kG ({kG}): {din:.3f}   gana con holgura')""")
 
 code(r"""# figura: estático vs dinámico aumentado contra el presupuesto B (q=0.1, G=16)
 q, G = 0.1, 16
@@ -139,27 +143,23 @@ ax1.set_xlabel('presupuesto B'); ax1.set_ylabel('utilidad esperada / u')
 ax1.set_title(f'Separación contra el presupuesto (q={q}, G={G})', fontsize=10)
 ax1.legend(fontsize=8, loc='lower right')
 
-# heatmap: región donde gana el dinámico, sobre (q, B) para G=16.
-# La escala se recorta a +-0.4 (la magnitud de las victorias) para que la
-# región de victoria no la aplasten las derrotas grandes de q alto; la
-# frontera din=est se marca con una curva de nivel.
-qs = np.linspace(0.03, 0.45, 60); Bgrid = np.arange(1 + round(math.log2(G)), 16)
-adv = np.full((len(qs), len(Bgrid)), np.nan)
-for i, qq in enumerate(qs):
-    for j, bb in enumerate(Bgrid):
-        d, _ = util_dinamico(int(bb), G, qq)
-        if d is not None:
-            adv[i, j] = d - util_estatico(int(bb), qq)
-im = ax2.imshow(adv, origin='lower', aspect='auto', cmap='RdBu',
-                vmin=-0.4, vmax=0.4,
-                extent=[Bgrid[0]-.5, Bgrid[-1]+.5, qs[0], qs[-1]])
-BB, QQ = np.meshgrid(Bgrid, qs)
-ax2.contour(BB, QQ, adv, levels=[0.0], colors=[TINTA], linewidths=1.2)
+# derecha: la ventana de victoria. Para cada B, el empate q*(B) donde
+# B·q = 1-(1-q)^kG; abajo de la curva gana el aumentado.
+qs = np.linspace(0.02, 0.45, 400)
+Bgrid = np.arange(1 + round(math.log2(G)), 16)
+q_star = []
+for bb in Bgrid:
+    gana = np.array([util_dinamico(int(bb), G, float(qq))[0] > bb * qq
+                     for qq in qs])
+    q_star.append(float(qs[gana].max()) if gana.any() else np.nan)
+ax2.plot(Bgrid, q_star, color=TINTA, lw=1.6)
+ax2.fill_between(Bgrid, 0, q_star, color=AZUL, alpha=0.15)
+ax2.text(9.5, 0.05, 'gana el aumentado', fontsize=9, color=AZUL, ha='center')
+ax2.text(11, 0.30, 'gana el estático', fontsize=9, color=TINTA, ha='center')
 ax2.set_xlabel('presupuesto B'); ax2.set_ylabel('prob. de estar sano  q')
-ax2.set_title('Dónde gana el dinámico aumentado sobre (q, B); la curva es la frontera',
+ax2.set_ylim(0, 0.45)
+ax2.set_title('La ventana de victoria del aumentado; la curva es el empate',
               fontsize=10)
-cb = fig.colorbar(im, ax=ax2, fraction=0.046, pad=0.04, extend='min')
-cb.set_label('(din. aumentado − estático) / u', fontsize=8)
 fig.tight_layout(); plt.show()""")
 
 md(r"""**Lectura.** La separación es fuerte con prevalencia alta y presupuesto
