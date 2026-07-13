@@ -432,7 +432,7 @@ for k_tests in range(1, 4):
         Z_true_int = sum(1 << i for i in range(n) if rng.random() < p_prior[i])
         tests_t = []
         for _ in range(k_tests):
-            pool = tuple(sorted(getattr(rng, "sa" + "mple")(range(n), G)))
+            pool = tuple(sorted(rng.sample(range(n), G)))
             r_obs = sum(1 for i in pool if (Z_true_int >> i) & 1)
             tests_t.append((pool, r_obs))
         j = joint_posterior(n, p_prior, tests_t)
