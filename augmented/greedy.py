@@ -84,7 +84,8 @@ def _myopic_best_pool(p, u, G, n, cleared_mask, use_filtering=True):
     return best_pool
 
 
-def greedy_myopic_simulate(p, u, B, G, z_mask, pool_selector=None):
+def greedy_myopic_simulate(p, u, B, G, z_mask, pool_selector=None, *,
+                           belief_update=None):
     """Simulate myopic greedy on a fixed latent-state profile z_mask.
 
     At each step: pick best myopic pool, observe augmented result,
@@ -95,10 +96,18 @@ def greedy_myopic_simulate(p, u, B, G, z_mask, pool_selector=None):
     pool_selector : callable or None
         If provided, called as pool_selector(p, u, G, n, cleared_mask)
         to select the pool at each step.  Defaults to _myopic_best_pool.
+    belief_update : callable or None
+        If provided, called as belief_update(prior, history, n) with the
+        ORIGINAL prior and the FULL history to recompute the carried
+        marginals after each observation (matches
+        bayesian_update_by_counting / gibbs_update signatures; gibbs_update
+        needs a lambda to pin its extra kwargs).  Defaults to the legacy
+        sequential bayesian_update_single_test carrying.
 
     Returns (history, cleared_mask, utility).
     """
     n = len(p)
+    prior = list(p)
     current_p = list(p)
     cleared_mask = 0
     history = ()
@@ -114,7 +123,10 @@ def greedy_myopic_simulate(p, u, B, G, z_mask, pool_selector=None):
         history = history + ((pool, r),)
         if r == 0:
             cleared_mask |= pool
-        current_p = bayesian_update_single_test(current_p, pool, r, n)
+        if belief_update is None:
+            current_p = bayesian_update_single_test(current_p, pool, r, n)
+        else:
+            current_p = belief_update(prior, history, n)
 
     utility = sum(u[i] for i in indices_from_mask(cleared_mask, n))
     return history, cleared_mask, utility

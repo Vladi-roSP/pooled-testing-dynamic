@@ -52,3 +52,43 @@ def test_pool_solvers_records_backend():
     # (if the license gets renewed this assertion should be relaxed to the
     #  membership check above; keep both lines documented)
     assert ps.LAST_BACKEND == "heuristic"
+
+
+# -------------------------------------------------------------------
+# Task 3: acarreo exacto de creencias en greedy_myopic_simulate
+# -------------------------------------------------------------------
+
+def test_simulate_with_exact_belief_carrying_bans_deduced_active():
+    from augmented.greedy import greedy_myopic_simulate
+    from augmented.bayesian import bayesian_update_by_counting
+    # 5 people; person 3 is the only active. Force first pools via selector.
+    p = [0.3, 0.3, 0.3, 0.3, 0.3]
+    u = [1.0, 1.0, 1.0, 3.0, 1.0]
+    z = 0b01000  # person 3 active
+    forced = [0b11100, 0b10100]  # {2,3,4} then {2,4}
+
+    def scripted_selector(cur_p, uu, G, n, cleared):
+        if forced:
+            return forced.pop(0)
+        # afterwards: default product scoring on the carried marginals
+        from augmented.greedy import _myopic_best_pool
+        return _myopic_best_pool(cur_p, uu, G, n, cleared)
+
+    hist, cleared, val = greedy_myopic_simulate(
+        p, u, B=3, G=3, z_mask=z, pool_selector=scripted_selector,
+        belief_update=bayesian_update_by_counting)
+    # the third pool must NOT contain person 3 (exact marginal = 1.0)
+    third_pool = hist[2][0]
+    assert not (third_pool >> 3 & 1), f"deduced-active tested: {hist}"
+
+
+def test_simulate_default_behavior_unchanged():
+    # belief_update=None must reproduce the old sequential behavior bit-for-bit
+    from augmented.greedy import greedy_myopic_simulate
+    rng = random.Random(7)
+    p = [rng.uniform(0.05, 0.6) for _ in range(6)]
+    u = [rng.uniform(1.0, 5.0) for _ in range(6)]
+    for z in (0, 5, 33):
+        a = greedy_myopic_simulate(p, u, 3, 3, z)
+        b = greedy_myopic_simulate(p, u, 3, 3, z, belief_update=None)
+        assert a == b
