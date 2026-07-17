@@ -339,3 +339,40 @@ def test_experiment_gates_match_exact_pmf_frontier():
     assert EXACT_PMF_MAX_N == 18
     assert s3.exact_eu_feasible(18) and not s3.exact_eu_feasible(19)
     assert ov.exact_eu_feasible(18) and not ov.exact_eu_feasible(19)
+
+
+# -------------------------------------------------------------------
+# Task 11: lookahead exacto de profundidad 1
+# -------------------------------------------------------------------
+
+def test_exact_lookahead_B2_equals_optimum():
+    # At B=2, anticipating the single future step IS full optimization.
+    from augmented.lookahead_exact import exact_lookahead_expected_utility
+    from augmented.solver import solve_optimal_dapts
+    for seed in range(5):
+        rng = random.Random(800 + seed)
+        p = [rng.uniform(0.1, 0.8) for _ in range(5)]
+        u = [rng.uniform(1.0, 5.0) for _ in range(5)]
+        opt, _ = solve_optimal_dapts(p, u, 2, 3)
+        la = exact_lookahead_expected_utility(p, u, 2, 3)
+        assert abs(opt - la) < 1e-9, (seed, opt, la)
+
+
+def test_exact_lookahead_sandwich_and_B1_equals_myopic():
+    # greedy(exact-scored) <= lookahead <= OPT at every horizon; at B=1
+    # depth-1 lookahead degenerates to the exact myopic policy.
+    from augmented.lookahead_exact import exact_lookahead_expected_utility
+    from augmented.independence_gap import exact_greedy_myopic_expected_utility
+    from augmented.solver import solve_optimal_dapts
+    for seed in range(3):
+        rng = random.Random(820 + seed)
+        p = [rng.uniform(0.1, 0.8) for _ in range(5)]
+        u = [rng.uniform(1.0, 5.0) for _ in range(5)]
+        for B in (1, 2, 3):
+            opt, _ = solve_optimal_dapts(p, u, B, 3)
+            g = exact_greedy_myopic_expected_utility(p, u, B, 3)
+            la = exact_lookahead_expected_utility(p, u, B, 3)
+            assert g - 1e-9 <= la <= opt + 1e-9, (seed, B, g, la, opt)
+        g1 = exact_greedy_myopic_expected_utility(p, u, 1, 3)
+        la1 = exact_lookahead_expected_utility(p, u, 1, 3)
+        assert abs(g1 - la1) < 1e-9
