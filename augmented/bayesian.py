@@ -10,6 +10,7 @@ In the idealized augmented model, counting pool t yields r = |t ∩ Z|
 """
 
 import math
+import warnings
 
 from augmented.core import indices_from_mask, test_result, popcount
 
@@ -460,11 +461,58 @@ def _propose_alternating_move(comp, tests, agent_tests, state, rng, max_steps,
     return move, log_corr
 
 
+def _deduce_from_history(history, n):
+    """Deterministic-deduction preprocessing shared by gibbs_update and
+    posterior_draws: propagate r=0 (all clearancey) and r=|pool| (all active)
+    deductions to a fixed point. Returns (confirmed_clearancey,
+    confirmed_active, remaining_tests) where remaining_tests holds the
+    reduced (eff_pool, eff_r) pairs still carrying uncertainty."""
+    confirmed_clearancey = set()
+    confirmed_active = set()
+
+    remaining_tests = [(pool_mask, r) for pool_mask, r in history]
+    changed = True
+    while changed:
+        changed = False
+        new_tests = []
+        for pool_mask, r in remaining_tests:
+            # Remove confirmed agents from this test
+            eff_pool = pool_mask
+            eff_r = r
+            for i in confirmed_clearancey:
+                if eff_pool >> i & 1:
+                    eff_pool ^= (1 << i)
+            for i in confirmed_active:
+                if eff_pool >> i & 1:
+                    eff_pool ^= (1 << i)
+                    eff_r -= 1
+
+            pool_size = popcount(eff_pool)
+
+            if eff_r == 0 and eff_pool != 0:
+                # All remaining in pool are clearancey
+                for i in range(n):
+                    if eff_pool >> i & 1 and i not in confirmed_clearancey:
+                        confirmed_clearancey.add(i)
+                        changed = True
+            elif eff_r == pool_size and pool_size > 0:
+                # All remaining in pool are active
+                for i in range(n):
+                    if eff_pool >> i & 1 and i not in confirmed_active:
+                        confirmed_active.add(i)
+                        changed = True
+            elif eff_r > 0 and pool_size > 0:
+                new_tests.append((eff_pool, eff_r))
+        remaining_tests = new_tests
+
+    return confirmed_clearancey, confirmed_active, remaining_tests
+
+
 def _alternating_move_component_marginals(comp, tests, p, rng,
                                           num_iterations, burn_in,
                                           window_size, tolerance,
                                           count_preserving_only=False,
-                                          stats=None):
+                                          stats=None, collect=None):
     """Metropolis-Hastings generator over a connected component using
     alternating-path Markov moves (count-changing, hence ergodic across count
     levels) with prior-ratio acceptance times the mirror-path Hastings factor
@@ -477,7 +525,10 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
     count-preserving subset (the old swap generator); this is the ablation
     baseline and is deliberately non-ergodic across count levels. When a list
     is passed as ``stats`` one dict per MCMC-solved component is appended with
-    the visited count-level histogram and the proposal/acceptance tallies."""
+    the visited count-level histogram and the proposal/acceptance tallies.
+    When a list is passed as ``collect``, one full assignment snapshot
+    (dict {agent: 0/1}) is appended per kept iteration; consecutive snapshots
+    are autocorrelated (thinning = one sweep of move attempts)."""
     agent_tests = {a: [] for a in comp}
     for ti, (members, r) in enumerate(tests):
         for a in members:
@@ -529,6 +580,8 @@ def _alternating_move_component_marginals(comp, tests, p, rng,
                     lvl += 1
             count_hist[lvl] = count_hist.get(lvl, 0) + 1
             total_draws += 1
+            if collect is not None:
+                collect.append(dict(state))
             if total_draws % window_size == 0:
                 cur = {a: active_counts[a] / total_draws for a in comp}
                 if prev is not None and max(abs(cur[a] - prev[a])
@@ -628,43 +681,8 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
     rng = _random.Random(seed)
 
     # ---- Step 1: Preprocessing — deterministic deductions ----
-    confirmed_clearancey = set()
-    confirmed_active = set()
-
-    remaining_tests = [(pool_mask, r) for pool_mask, r in history]
-    changed = True
-    while changed:
-        changed = False
-        new_tests = []
-        for pool_mask, r in remaining_tests:
-            # Remove confirmed agents from this test
-            eff_pool = pool_mask
-            eff_r = r
-            for i in confirmed_clearancey:
-                if eff_pool >> i & 1:
-                    eff_pool ^= (1 << i)
-            for i in confirmed_active:
-                if eff_pool >> i & 1:
-                    eff_pool ^= (1 << i)
-                    eff_r -= 1
-
-            pool_size = popcount(eff_pool)
-
-            if eff_r == 0 and eff_pool != 0:
-                # All remaining in pool are clearancey
-                for i in range(n):
-                    if eff_pool >> i & 1 and i not in confirmed_clearancey:
-                        confirmed_clearancey.add(i)
-                        changed = True
-            elif eff_r == pool_size and pool_size > 0:
-                # All remaining in pool are active
-                for i in range(n):
-                    if eff_pool >> i & 1 and i not in confirmed_active:
-                        confirmed_active.add(i)
-                        changed = True
-            elif eff_r > 0 and pool_size > 0:
-                new_tests.append((eff_pool, eff_r))
-        remaining_tests = new_tests
+    confirmed_clearancey, confirmed_active, remaining_tests = \
+        _deduce_from_history(history, n)
 
     # Build posterior for confirmed agents
     posterior = list(p)
@@ -711,6 +729,151 @@ def gibbs_update(p, history, n, num_iterations=1000, burn_in=200,
             posterior[a] = val
 
     return posterior
+
+
+def _component_assignment_draws(comp, tests, p, rng, num_draws):
+    """Draw num_draws iid assignments for one connected component by
+    enumerating its consistent assignments with prior weights (the same
+    enumeration _exact_component_marginals performs) and sampling the
+    resulting categorical. Returns a list of GLOBAL bitmasks (bits only on
+    this component's agents). Raises ValueError if infeasible."""
+    m = len(comp)
+    pos = {a: b for b, a in enumerate(comp)}
+    test_masks = []
+    for members, r in tests:
+        bm = 0
+        for a in members:
+            bm |= (1 << pos[a])
+        test_masks.append((bm, r))
+    pa = [p[a] for a in comp]
+    qa = [1.0 - p[a] for a in comp]
+
+    assigns, weights = [], []
+    for assign in range(1 << m):
+        ok = True
+        for bm, r in test_masks:
+            if (assign & bm).bit_count() != r:
+                ok = False
+                break
+        if not ok:
+            continue
+        w = 1.0
+        for b in range(m):
+            w *= pa[b] if (assign >> b & 1) else qa[b]
+        if w > 0.0:
+            assigns.append(assign)
+            weights.append(w)
+    if not assigns:
+        raise ValueError("infeasible component in posterior_draws")
+
+    out = []
+    for assign in rng.choices(assigns, weights=weights, k=num_draws):
+        gm = 0
+        bits = assign
+        while bits:
+            lsb = bits & -bits
+            gm |= (1 << comp[lsb.bit_length() - 1])
+            bits ^= lsb
+        out.append(gm)
+    return out
+
+
+def posterior_draws(p, history, n, num_draws=1000, seed=None,
+                    num_iterations=1000, burn_in=200, window_size=50,
+                    tolerance=1e-4):
+    """Draw full latent-state profiles Z ~ P(Z | history).
+
+    Reuses the gibbs_update pipeline stages: deterministic deductions fix the
+    forced bits; each residual connected component with at most
+    EXACT_ACTIVE_THRESHOLD agents is enumerated and sampled iid from its
+    exact categorical; an oversized component falls back to the alternating-
+    move MCMC (one thinned assignment per kept iteration, recycled with a
+    warning if it converges before num_draws); agents in no residual test are
+    iid Bernoulli(p_i).
+
+    Draws are iid exact for instances whose components all fit the
+    enumeration threshold; MCMC components introduce autocorrelation.
+
+    Returns
+    -------
+    list[int]
+        num_draws full n-bit masks (bit i set = agent i active).
+    """
+    import random as _random
+
+    rng = _random.Random(seed)
+
+    if history:
+        confirmed_clearancey, confirmed_active, remaining_tests = \
+            _deduce_from_history(history, n)
+    else:
+        confirmed_clearancey, confirmed_active, remaining_tests = \
+            set(), set(), []
+
+    forced_mask = 0
+    for i in confirmed_active:
+        forced_mask |= (1 << i)
+    draws = [forced_mask] * num_draws
+
+    active_set = set()
+    for pool_mask, _ in remaining_tests:
+        for i in range(n):
+            if pool_mask >> i & 1:
+                active_set.add(i)
+
+    components = (_connected_components(sorted(active_set), remaining_tests)
+                  if active_set else [])
+
+    for comp in components:
+        comp_tests = _component_tests(comp, remaining_tests)
+        if len(comp) <= EXACT_ACTIVE_THRESHOLD:
+            comp_draws = _component_assignment_draws(
+                comp, comp_tests, p, rng, num_draws)
+        else:
+            collected = []
+            _alternating_move_component_marginals(
+                comp, comp_tests, p, rng,
+                num_iterations=num_iterations, burn_in=burn_in,
+                window_size=window_size, tolerance=tolerance,
+                collect=collected)
+            if not collected:
+                # Mirror of the marginal path's last resort: the MCMC could
+                # not seed/keep a state, so enumerate (the component must be
+                # feasible for the history to have happened).
+                comp_draws = _component_assignment_draws(
+                    comp, comp_tests, p, rng, num_draws)
+            else:
+                if len(collected) < num_draws:
+                    warnings.warn(
+                        f"posterior_draws: componente MCMC produjo "
+                        f"{len(collected)} draws < {num_draws}; se reciclan "
+                        "muestras (autocorrelacion adicional)",
+                        RuntimeWarning, stacklevel=2)
+                comp_draws = []
+                for k in range(num_draws):
+                    st = collected[k % len(collected)]
+                    gm = 0
+                    for a, v in st.items():
+                        if v:
+                            gm |= (1 << a)
+                    comp_draws.append(gm)
+        for k in range(num_draws):
+            draws[k] |= comp_draws[k]
+
+    # Unconstrained agents (in no residual test): iid Bernoulli(p_i).
+    constrained = confirmed_clearancey | confirmed_active | active_set
+    for i in range(n):
+        if i in constrained:
+            continue
+        pi = p[i]
+        if pi <= 0.0:
+            continue
+        bit = 1 << i
+        for k in range(num_draws):
+            if rng.random() < pi:
+                draws[k] |= bit
+
+    return draws
 
 
 def estimate_p_from_history(history, n, prior_p=None, prior_strength=1.0):

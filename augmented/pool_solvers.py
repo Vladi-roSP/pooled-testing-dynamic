@@ -252,6 +252,38 @@ def gurobi_best_pool(p, u, G, n, cleared_mask):
         return _heuristic_best_pool(active_indices, p, u, G)
 
 
+def sample_best_pool(draws, u, G, n, cleared_mask):
+    """Seleccion de pool por frecuencia conjunta muestral.
+
+    score(t) = (#draws con t completamente limpio / S) * sum(u_i, i en t no
+    acreditado). Construccion greedy: en cada paso agrega el miembro que
+    maximiza el score del pool extendido; se detiene si ningun miembro lo
+    mejora. Mata el sesgo de independencia del producto de marginales
+    (los draws ya cargan las correlaciones del posterior).
+    """
+    S = len(draws)
+    if S == 0:
+        return 0
+    candidates = [i for i in range(n) if not (cleared_mask >> i & 1)]
+    pool, alive, gain, best_score = 0, list(range(S)), 0.0, 0.0
+    for _ in range(G):
+        best = None
+        for i in candidates:
+            if pool >> i & 1:
+                continue
+            bit = 1 << i
+            alive_i = [k for k in alive if not (draws[k] & bit)]
+            g = gain + (u[i] if not (cleared_mask >> i & 1) else 0.0)
+            score = (len(alive_i) / S) * g
+            if score > best_score + 1e-15:
+                best, best_score, best_alive, best_gain = i, score, alive_i, g
+        if best is None:
+            break
+        pool |= (1 << best)
+        alive, gain = best_alive, best_gain
+    return pool
+
+
 def solver_best_pool(p, u, G, n, cleared_mask, solver='mosek'):
     """Dispatch to Mosek or Gurobi based on solver parameter.
 
