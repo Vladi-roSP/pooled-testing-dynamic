@@ -876,12 +876,13 @@ def posterior_draws(p, history, n, num_draws=1000, seed=None,
     return draws
 
 
-def estimate_p_from_history(history, n, prior_p=None, prior_strength=1.0):
-    """Estimate latent-state probabilities from observed test data.
+def estimate_p_from_history(history, n, prior_p=None):
+    """Posterior marginals from a prior guess and the observed history.
 
-    Uses a Bayesian approach with a Beta prior. If prior_p is given,
-    uses Beta(prior_strength * p_i, prior_strength * (1 - p_i)) as prior.
-    Otherwise uses uniform Beta(1, 1).
+    Pese al nombre historico, aqui no hay suavizado Beta: la funcion devuelve
+    bayesian_update_by_counting sobre prior_p (0.5 por omision) y, sin
+    historia, el prior tal cual. (Los parametros Beta muertos que sugerian
+    otra cosa se eliminaron en la limpieza 2026-07.)
 
     Parameters
     ----------
@@ -890,33 +891,14 @@ def estimate_p_from_history(history, n, prior_p=None, prior_strength=1.0):
     n : int
         Population size.
     prior_p : list[float] or None
-        Prior guess for latent-state probabilities.
-    prior_strength : float
-        Strength of the prior (pseudo-count scale).
+        Prior guess for latent-state probabilities (default: 0.5 each).
 
     Returns
     -------
     list[float]
-        Estimated latent-state probabilities.
+        Posterior latent-state probabilities.
     """
-    if prior_p is not None:
-        alpha = [prior_strength * pi for pi in prior_p]
-        beta = [prior_strength * (1.0 - pi) for pi in prior_p]
-    else:
-        alpha = [1.0] * n
-        beta = [1.0] * n
-
-    # For each consistent world, accumulate posterior mass
+    p_prior = list(prior_p) if prior_p else [0.5] * n
     if not history:
-        return [a / (a + b) for a, b in zip(alpha, beta)]
-
-    q_prior = [1.0] * n
-    if prior_p:
-        q_prior = [1.0 - pi for pi in prior_p]
-    else:
-        q_prior = [0.5] * n
-
-    p_prior = prior_p if prior_p else [0.5] * n
-
-    # Use counting-based posterior
+        return p_prior
     return bayesian_update_by_counting(p_prior, history, n)

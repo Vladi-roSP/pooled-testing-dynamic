@@ -30,7 +30,7 @@ import random
 from augmented.core import test_result, popcount
 from augmented.bayesian import (exact_pool_pmf, bayesian_update_by_counting,
                                 gibbs_update)
-from augmented.greedy import greedy_myopic_expected_utility
+from augmented.greedy import greedy_myopic_expected_utility, EXACT_PMF_MAX_N
 from augmented.vhat import get as _get_vhat
 
 # Umbral para el posterior expuesto a las V-hat: exacto (2^n) en n chico, Gibbs
@@ -38,8 +38,10 @@ from augmented.vhat import get as _get_vhat
 # escale, de modo que una V-hat basada en marginales (p.ej. umax) corre a n=50
 # igual que en producción, mientras que una V-hat que enumera el soporte
 # CONJUNTO (2^n) no. Los certificados con puntaje viven en n<=6, así que su
-# U_pen se computa siempre por la rama exacta y no cambia.
-_EXACT_POSTERIOR_MAX_N = 16
+# U_pen se computa siempre por la rama exacta y no cambia. La frontera es LA
+# MISMA que la de los pesos de rama exactos (greedy.EXACT_PMF_MAX_N): una
+# sola fuente de verdad para "hasta donde es exacta la inferencia".
+_EXACT_POSTERIOR_MAX_N = EXACT_PMF_MAX_N
 
 
 # -------------------------------------------------------------------

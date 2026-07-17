@@ -12,10 +12,14 @@ instancia por instancia en el benchmark y en tests_certificates.py.
 Interfaz: una V-hat es fn(ctx, h_fs, remaining) -> float, donde
   ctx        expone el problema y primitivas cacheadas Y ESCALABLES:
              ctx.p, ctx.u, ctx.n, ctx.G,
-             ctx.posterior(h_fs)   -> [P(Z_i=1 | h)]  (marginales; exacto en n
-                                      chico, Gibbs por componentes en n grande)
+             ctx.posterior(h_fs)   -> [P(Z_i=1 | h)]  (marginales; exacto
+                                      hasta greedy.EXACT_PMF_MAX_N = 18,
+                                      Gibbs por componentes arriba)
              ctx.cleared_mask(h_fs)-> bitmask de acreditados (pools con r=0)
-             ctx.greedy_value(p, u, budget) -> EU del greedy miope
+             ctx.greedy_value(p, u, budget) -> EU del greedy miope. Contrato:
+                                      EXACTA solo hasta n = 18 (pesos de rama
+                                      Poisson-Binomial arriba de eso), costo
+                                      O(C(n, <=G)) por paso de la recursion
   h_fs       la historia como frozenset de pares (pool_mask, r)
   remaining  tests que quedan DESPUES de observar el resultado de este paso
 

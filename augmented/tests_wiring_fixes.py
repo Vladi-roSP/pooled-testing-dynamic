@@ -376,3 +376,14 @@ def test_exact_lookahead_sandwich_and_B1_equals_myopic():
         g1 = exact_greedy_myopic_expected_utility(p, u, 1, 3)
         la1 = exact_lookahead_expected_utility(p, u, 1, 3)
         assert abs(g1 - la1) < 1e-9
+
+
+# -------------------------------------------------------------------
+# Task 13: frontera de exactitud unificada
+# -------------------------------------------------------------------
+
+def test_certificates_and_greedy_share_exactness_frontier():
+    from augmented.greedy import EXACT_PMF_MAX_N
+    import augmented.certificates as cert
+    assert cert._EXACT_POSTERIOR_MAX_N is EXACT_PMF_MAX_N
+    assert EXACT_PMF_MAX_N == 18

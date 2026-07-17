@@ -140,10 +140,10 @@ def main():
     print(f"  val(VW-B) == val(full)? {abs(val_B - val_full) < 1e-9}")
 
     # ----- DP optimum and true greedy value (end-to-end, B=2) -----
-    # The recursive greedy_myopic_expected_utility uses Poisson-Binomial PMF
-    # computed from MARGINAL posteriors, which is incorrect when Z|history is
-    # not independent. To get the truthful policy value we simulate greedy on
-    # every z-profile and weight by Pr(z) under the prior.
+    # greedy_myopic_expected_utility weights branches with the exact
+    # P(r | history) at this n (<= EXACT_PMF_MAX_N), so it IS the truthful
+    # policy value. The profile-weighted simulation below is kept as an
+    # independent cross-check: both numbers must coincide.
     q = [1.0 - pi for pi in p_prior]
     u_greedy_true = 0.0
     for z in range(1 << n):
@@ -158,8 +158,8 @@ def main():
 
     print("\n--- End-to-end expected utility (B=2) ---")
     print(f"  greedy (true, simulated)     : {u_greedy_true:.6f}")
-    print(f"  greedy (recursive estimate)  : {u_greedy_recurse:.6f}  "
-          "(inflated by indep. PMF approx)")
+    print(f"  greedy (recursive, exact pmf): {u_greedy_recurse:.6f}  "
+          "(must match the simulated value)")
     print(f"  DP optimum                   : {u_opt:.6f}")
     print(f"  lookahead gap (DP − greedy)  : "
           f"{u_opt - u_greedy_true:.6f}")
