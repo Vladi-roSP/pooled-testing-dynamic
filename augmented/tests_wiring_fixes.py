@@ -151,3 +151,74 @@ def test_hybrid_kB_equals_greedy_on_overlap_heavy_instances():
         g = greedy_myopic_expected_utility(p, u, 3, 3)
         _, h = hybrid_greedy_bruteforce(p, u, 3, 3, greedy_steps=3)  # K=B
         assert abs(g - h) < 1e-9, (seed, g, h)
+
+
+# -------------------------------------------------------------------
+# Task 7: fase DP condicionada en la historia real
+# -------------------------------------------------------------------
+
+def test_hybrid_k0_equals_exact_dp():
+    from augmented.hybrid_solver import hybrid_greedy_bruteforce
+    from augmented.solver import solve_optimal_dapts
+    for seed in range(5):
+        rng = random.Random(500 + seed)
+        p = [rng.uniform(0.2, 0.7) for _ in range(5)]
+        u = [rng.uniform(1.0, 5.0) for _ in range(5)]
+        opt, _ = solve_optimal_dapts(p, u, 3, 3)
+        _, h = hybrid_greedy_bruteforce(p, u, 3, 3, greedy_steps=0)
+        assert abs(opt - h) < 1e-9, (seed, opt, h)
+
+
+def test_hybrid_midK_between_greedy_and_opt():
+    # greedy prefix + optimal suffix must sit between full greedy and OPT
+    from augmented.hybrid_solver import hybrid_greedy_bruteforce
+    from augmented.greedy import greedy_myopic_expected_utility
+    from augmented.solver import solve_optimal_dapts
+    for seed in range(5):
+        rng = random.Random(500 + seed)
+        p = [rng.uniform(0.2, 0.7) for _ in range(5)]
+        u = [rng.uniform(1.0, 5.0) for _ in range(5)]
+        g = greedy_myopic_expected_utility(p, u, 3, 3)
+        opt, _ = solve_optimal_dapts(p, u, 3, 3)
+        for K in (1, 2):
+            _, h = hybrid_greedy_bruteforce(p, u, 3, 3, greedy_steps=K)
+            assert g - 1e-9 <= h <= opt + 1e-9, (seed, K, g, h, opt)
+
+
+def _eval_policy_tree(tree, p, u, n):
+    """Exact E[utility] of the deterministic policy encoded by a tree_dict:
+    walk every latent profile z through the tree, credit r=0 pools."""
+    from augmented.core import popcount
+    total = 0.0
+    for z in range(1 << n):
+        w = 1.0
+        for i in range(n):
+            w *= p[i] if (z >> i & 1) else (1.0 - p[i])
+        if w == 0.0:
+            continue
+        node, cleared = tree, 0
+        while not node['terminal']:
+            pool = node['pool']
+            r = popcount(pool & z)
+            if r == 0:
+                cleared |= pool
+            nxt = node['children'].get(r)
+            if nxt is None:
+                break  # branch missing for a reachable outcome: value is lost
+            node = nxt
+        total += w * sum(u[i] for i in range(n) if cleared >> i & 1)
+    return total
+
+
+def test_hybrid_reported_value_matches_true_policy_value():
+    # The DP phase must be conditioned on the real history: the reported EU
+    # has to equal the exact value of the policy tree it returns.
+    from augmented.hybrid_solver import hybrid_greedy_bruteforce
+    for seed in range(6):
+        rng = random.Random(520 + seed)
+        p = [rng.uniform(0.2, 0.7) for _ in range(5)]
+        u = [rng.uniform(1.0, 5.0) for _ in range(5)]
+        for K in (1, 2):
+            tree, h = hybrid_greedy_bruteforce(p, u, 3, 3, greedy_steps=K)
+            true_val = _eval_policy_tree(tree, p, u, 5)
+            assert abs(h - true_val) < 1e-9, (seed, K, h, true_val)

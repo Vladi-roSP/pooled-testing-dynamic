@@ -502,9 +502,11 @@ def _dp_phase(p, u, G, n, current_p, cleared_mask, step,
     cleared_indices = indices_from_mask(cleared_mask, n)
     cleared_utility = sum(u[i] for i in cleared_indices)
 
-    # Identify active agents
+    # Identify active agents. include_known_clearancey=True: un agente
+    # deducido limpio pero no acreditado sigue siendo cosechable por el DP
+    # (el filtro de historia lo fija limpio en todos los perfiles).
     active_mask, confirmed_active_mask = compute_active_mask(
-        current_p, cleared_mask, n
+        current_p, cleared_mask, n, include_known_clearancey=True
     )
     active_indices = indices_from_mask(active_mask, n)
     n_active = len(active_indices)
@@ -529,14 +531,33 @@ def _dp_phase(p, u, G, n, current_p, cleared_mask, step,
             history, remaining_budget, greedy_score_fn
         )
 
-    # Build reduced subproblem
-    sub_p = [current_p[i] for i in active_indices]
+    # Build reduced subproblem over the ORIGINAL prior: the DP no longer
+    # receives an independent belief fabricated from sequential marginals —
+    # it conditions on the real greedy-phase history, reduced to the active
+    # sub-population (confirmed-active members subtracted from each count;
+    # cleared members contribute zero and drop out).
+    sub_p = [p[i] for i in active_indices]
     sub_u = [u[i] for i in active_indices]
     sub_n = n_active
     sub_G = min(G, sub_n)
 
-    # Solve exact DP on reduced subproblem
-    dp_val, dp_policy = solve_optimal_dapts(sub_p, sub_u, remaining_budget, sub_G)
+    pos = {orig: sub for sub, orig in enumerate(active_indices)}
+    sub_history = []
+    for pool_mask, r in history:
+        eff_r = r - popcount(pool_mask & confirmed_active_mask)
+        sub_pool = 0
+        for orig in active_indices:
+            if pool_mask >> orig & 1:
+                sub_pool |= (1 << pos[orig])
+        if sub_pool == 0:
+            if eff_r != 0:
+                raise ValueError("historia infactible en _dp_phase")
+            continue  # test fully explained by cleared/confirmed agents
+        sub_history.append((sub_pool, eff_r))
+
+    # Solve exact DP on reduced subproblem, conditioned on the history
+    dp_val, dp_policy = solve_optimal_dapts(
+        sub_p, sub_u, remaining_budget, sub_G, history=tuple(sub_history))
 
     # Extract tree from sub-policy
     sub_tree = extract_tree(dp_policy, sub_p, sub_u, sub_n)

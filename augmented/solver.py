@@ -13,11 +13,16 @@ from augmented.strategy import DAPTS
 _MAX_N = 14
 
 
-def solve_optimal_dapts(p, u, B, G, cap=None):
+def solve_optimal_dapts(p, u, B, G, cap=None, history=()):
     """Solve for the optimal DAPTS via brute-force DP.
 
     cap: cuantizador de truncamiento del conteo (min(r, cap)).
          None = conteo completo (augmented); 1 = binario clásico.
+    history: tests ya observados como pares (pool_mask, conteo EXACTO).
+         Pre-filtra el conjunto raíz de perfiles a los consistentes y
+         devuelve el valor CONDICIONAL E[utilidad | history] (normalizado
+         por la masa consistente). Con history=() la ruta es identica a la
+         de siempre.
     Returns (optimal_value, optimal_policy).
     """
     n = len(p)
@@ -94,9 +99,21 @@ def solve_optimal_dapts(p, u, B, G, cap=None):
         memo[state] = (best_value, best_pool)
         return memo[state]
 
-    # Solve
-    all_z = frozenset(range(num_profiles))
-    optimal_value, _ = dp(0, all_z, 0)
+    # Solve. Con historia, la raíz son solo los perfiles consistentes y el
+    # valor se normaliza por su masa (condicional); sin historia la ruta es
+    # bit a bit la de siempre.
+    if history:
+        all_z = frozenset(
+            z for z in range(num_profiles)
+            if all(test_result(pm, z) == r for pm, r in history))
+        mass = sum(w[z] for z in all_z)
+        if mass <= 0.0:
+            raise ValueError("history infeasible under prior")
+        optimal_value, _ = dp(0, all_z, 0)
+        optimal_value /= mass
+    else:
+        all_z = frozenset(range(num_profiles))
+        optimal_value, _ = dp(0, all_z, 0)
 
     # Reconstruct policy from DP argmax decisions
     policy = DAPTS(B, cap=cap)
