@@ -222,3 +222,51 @@ def test_hybrid_reported_value_matches_true_policy_value():
             tree, h = hybrid_greedy_bruteforce(p, u, 3, 3, greedy_steps=K)
             true_val = _eval_policy_tree(tree, p, u, 5)
             assert abs(h - true_val) < 1e-9, (seed, K, h, true_val)
+
+
+# -------------------------------------------------------------------
+# Task 8: pesos de rama exactos en semi_utility
+# -------------------------------------------------------------------
+
+def _bruteforce_semi(p, u, B, G, alpha, mode):
+    """Exact E[utility] of the semi-utility greedy: enumerate every latent
+    profile, run the very same policy via simulate, weight by the prior."""
+    from augmented.semi_utility import greedy_myopic_semi_simulate
+    n = len(p)
+    total = 0.0
+    for z in range(1 << n):
+        w = 1.0
+        for i in range(n):
+            w *= p[i] if (z >> i & 1) else (1.0 - p[i])
+        if w == 0.0:
+            continue
+        _, _, val = greedy_myopic_semi_simulate(p, u, B, G, z, alpha,
+                                                update_method=mode)
+        total += w * val
+    return total
+
+
+def test_semi_utility_matches_bruteforce_all_modes():
+    from augmented.semi_utility import greedy_myopic_semi_expected_utility
+    for seed in range(8):
+        rng = random.Random(600 + seed)
+        n = 5 if seed % 2 else 6
+        p = [rng.uniform(0.2, 0.7) for _ in range(n)]
+        u = [rng.uniform(1.0, 5.0) for _ in range(n)]
+        for alpha in (0.5, 1.0):
+            for mode in ("sequential", "counting"):
+                eu = greedy_myopic_semi_expected_utility(p, u, 3, 3,
+                                                         alpha=alpha,
+                                                         update_method=mode)
+                bf = _bruteforce_semi(p, u, 3, 3, alpha, mode)
+                assert abs(eu - bf) < 1e-9, (seed, alpha, mode, eu, bf)
+
+
+def test_semi_utility_counting_mode_no_crash():
+    from augmented.semi_utility import greedy_myopic_semi_expected_utility
+    for seed in range(20):
+        rng = random.Random(700 + seed)
+        p = [rng.uniform(0.2, 0.7) for _ in range(5)]
+        u = [rng.uniform(1.0, 5.0) for _ in range(5)]
+        greedy_myopic_semi_expected_utility(p, u, 3, 3, alpha=0.3,
+                                            update_method="counting")  # must not raise

@@ -30,6 +30,7 @@ from augmented.core import (all_pools, all_pools_from_mask, compute_active_mask,
 from augmented.bayesian import (bayesian_update_single_test, bayesian_update,
                                 bayesian_update_by_counting, gibbs_update,
                                 _poisson_binomial_pmf)
+from augmented.greedy import _branch_pmf
 
 
 # -------------------------------------------------------------------
@@ -221,9 +222,10 @@ def greedy_myopic_semi_expected_utility(p, u, B, G, alpha,
         Expected binary clearance utility under the semi-utility greedy.
     """
     n = len(p)
+    prior = list(p)
 
     if update_method == 'sequential':
-        def recurse(current_p, b, cleared_mask):
+        def recurse(current_p, history, b, cleared_mask):
             if b == 0:
                 return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
@@ -232,7 +234,9 @@ def greedy_myopic_semi_expected_utility(p, u, B, G, alpha,
                 return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
             pool_idx = indices_from_mask(pool, n)
-            pmf = _poisson_binomial_pmf([current_p[i] for i in pool_idx])
+            # Pool SELECTION keeps the sequential marginals (the policy);
+            # the outcome BRANCHES are weighted by the exact P(r | history).
+            pmf = _branch_pmf(prior, history, current_p, pool, pool_idx, n)
 
             ev = 0.0
             for r in range(len(pool_idx) + 1):
@@ -240,10 +244,11 @@ def greedy_myopic_semi_expected_utility(p, u, B, G, alpha,
                     continue
                 new_p = bayesian_update_single_test(current_p, pool, r, n)
                 new_cleared = cleared_mask | pool if r == 0 else cleared_mask
-                ev += pmf[r] * recurse(new_p, b - 1, new_cleared)
+                new_history = history + ((pool, r),)
+                ev += pmf[r] * recurse(new_p, new_history, b - 1, new_cleared)
             return ev
 
-        return recurse(list(p), B, 0)
+        return recurse(list(p), (), B, 0)
 
     else:
         # For 'counting' and 'gibbs', posteriors depend on full history
@@ -265,7 +270,9 @@ def greedy_myopic_semi_expected_utility(p, u, B, G, alpha,
                 return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
             pool_idx = indices_from_mask(pool, n)
-            pmf = _poisson_binomial_pmf([current_p[i] for i in pool_idx])
+            # Exact branch weights: zero mass on history-infeasible r, which
+            # is what used to crash bayesian_update_by_counting downstream.
+            pmf = _branch_pmf(prior_p, history, current_p, pool, pool_idx, n)
 
             ev = 0.0
             for r in range(len(pool_idx) + 1):
