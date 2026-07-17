@@ -56,6 +56,11 @@ def _pi_welfare(z_mask, u, n, cap):
 def u_pi_exact(p, u, B, G):
     """E_Z[top B*G utilidades limpias], por enumeracion (n <= ~20)."""
     n = len(p)
+    if B * G >= n:
+        # Regimen saturado: _pi_welfare(z) = suma de TODAS las utilidades
+        # limpias para todo z, asi que por linealidad U_PI = sum u_i (1-p_i),
+        # exacta y O(n). (El MC de antes estimaba esta constante.)
+        return sum(u[i] * (1.0 - p[i]) for i in range(n))
     q = [1.0 - pi for pi in p]
     cap = B * G
     total = 0.0
@@ -71,6 +76,11 @@ def u_pi_exact(p, u, B, G):
 def u_pi_mc(p, u, B, G, num_samples=100000, seed=0):
     """Version Monte Carlo de U_PI para n grande."""
     n = len(p)
+    if B * G >= n:
+        # Regimen saturado: _pi_welfare(z) = suma de TODAS las utilidades
+        # limpias para todo z, asi que por linealidad U_PI = sum u_i (1-p_i),
+        # exacta y O(n). (El MC de antes estimaba esta constante.)
+        return sum(u[i] * (1.0 - p[i]) for i in range(n))
     cap = B * G
     rng = random.Random(seed)
     acc = 0.0
