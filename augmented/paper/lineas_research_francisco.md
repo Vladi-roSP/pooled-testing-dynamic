@@ -5,48 +5,62 @@ pero no podemos calcular el óptimo a gran escala, así que ¿cómo sabemos qué
 bueno es y cómo lo mejoramos? Setup común: prior $p_i\sim U(0,1)$,
 $u_i\sim\{1,2,3\}$, DP exacto como referencia donde es computable.
 
-## 1. De qué está hecho el hueco del greedy (descomposición)
+## 1. De qué está hecho el hueco del greedy (descomposición en tres peldaños)
 
-El hueco de optimalidad del greedy miope (~5-6%) se separa en dos causas
-independientes: la **miopía** (elegir por recompensa inmediata) y la
-**aproximación de independencia en la selección** (puntuar con el producto de
-marginales en vez de la conjunta exacta). Comparando el greedy estándar contra
-`exact_greedy_myopic_expected_utility` (que puntúa con $P(r{=}0\mid H)$ exacta)
-contra el óptimo:
+El hueco de optimalidad del greedy miope (~5-7%) se separa en TRES causas, no
+dos. La tabla vieja fundía en un solo "costo de la independencia" dos cosas
+distintas: puntuar con producto en vez de conjunta (**scoring**) y acarrear
+marginales secuenciales en vez de exactas (**propagación**). El peldaño
+intermedio del propio repo (`greedy_myopic_counting_expected_utility`:
+marginales exactas, scoring por producto) las separa. Con 30 instancias
+sembradas por n (misma receta, B=G=3):
 
-| n | hueco total | miopía pura | costo de la independencia |
+| n | hueco total | miopía pura | propagación | scoring puro |
+|---|---|---|---|---|
+| 5 | 5.37% | 3.90% | 1.45 pp | 0.02 pp |
+| 6 | 5.32% | 4.30% | 0.84 pp | 0.18 pp |
+| 7 | 6.98% | 5.36% | 1.48 pp | 0.14 pp |
+
+Alrededor de tres cuartas partes del hueco sigue siendo miopía intrínseca, pero
+la lectura operativa del cuarto restante cambió: dentro del viejo "costo de la
+independencia", la **propagación domina** (99% en n=5, 80% en n=6, 92% en n=7)
+y el scoring conjunto puro es casi gratis de ignorar. La palanca grande sigue
+siendo la miopía (lookahead); la palanca chica y barata es **propagar
+marginales exactas** (deducciones + counting/gibbs, ya implementado), no el
+scoring conjunto. Nota de honestidad: la escalera greedy ≤ counting ≤ exacto
+no es teorema por instancia (1 violación exacto&lt;counting en 90 instancias);
+la atribución es agregada.
+
+## 2. La recuperación del lookahead NO colapsa con el horizonte (errata)
+
+> **Errata (17-jul-2026).** La versión anterior de esta sección reportaba la
+> ley 99/40/16 y concluía "la profundidad de anticipación necesaria escala con
+> el horizonte". Esa medición usaba el lookahead con cableado legacy (updates
+> secuenciales + pesos Poisson-Binomial): **medía la degradación del cableado,
+> no la miopía**. Re-medido con ambos cableados sobre instancias idénticas, el
+> colapso desaparece.
+
+Sobre 30 instancias sembradas (n=6, G=4; `experiments_lookahead_exact.py`,
+CSV en `data/lookahead_law_rewired.csv`), lookahead de un paso re-planificado
+en cada jugada, dos cableados — legacy (selección con PB + secuencial, valor
+evaluado exacto) y exacto (selección y pesos sobre perfiles consistentes):
+
+| B | hueco miope | recupera (legacy) | recupera (exacto) |
 |---|---|---|---|
-| 5 | 5.26% | 4.24% | 1.02 pp |
-| 6 | 6.13% | 4.49% | 1.64 pp |
-| 7 | 5.89% | 4.44% | 1.46 pp |
+| 1 | 0% | 100% | 100% |
+| 2 | 1.56% | 92% | 100% |
+| 3 | 7.78% | 42% | 89% |
+| 4 | 11.66% | 38% | 93% |
 
-Alrededor de tres cuartas partes del hueco es miopía intrínseca —la tendrías aun
-con un scoring perfecto— y el cuarto restante es la independencia, que crece con n.
-La implicación es operativa: la palanca grande es atacar la miopía (lookahead), y
-la palanca chica y barata es el scoring exacto, que ya está implementado.
-
-## 2. La recuperación del lookahead colapsa con el horizonte
-
-El hueco del greedy es un fenómeno de primera jugada, así que un lookahead que
-anticipe el primer paso debería recuperarlo. La pregunta es cuánto, y cómo depende
-del horizonte $B$. Midiendo el lookahead de un paso contra el miope y el óptimo
-(n=6, G=4):
-
-| B | hueco miope | hueco lookahead | recupera |
-|---|---|---|---|
-| 1 | 0% | 0% | 100% |
-| 2 | 2.65% | 0.02% | 99% |
-| 3 | 4.90% | 2.93% | 40% |
-| 4 | 6.99% | 5.84% | 16% |
-
-El patrón es nítido y monótono: con horizonte corto el lookahead de un paso lo
-cierra casi todo (a B=2 iguala al óptimo, porque anticipar el único paso futuro es
-la optimización completa), pero conforme el horizonte crece recupera cada vez menos
-—40% a B=3, 16% a B=4— porque deja más pasos futuros jugados de forma miope. La
-lectura es una ley de diseño: la profundidad de anticipación necesaria escala con
-el horizonte; un lookahead de profundidad fija no basta para horizontes largos. Es
-el complemento dinámico del descubrimiento del horizonte (el beneficio del conteo y
-el costo de la miopía crecen ambos con $B$).
+El cableado legacy reproduce el colapso publicado (92→42→38, la forma de
+99/40/16); el exacto recupera ~90% del hueco miope a TODO horizonte medido. La
+lectura corregida: **la anticipación de un paso, bien cableada, basta en este
+rango de horizontes**; lo que se degradaba con B era el error de inferencia
+componiéndose con la profundidad. La pregunta teórica interesante ya no es
+"¿qué profundidad d(B) necesito?" sino "¿cuánta *calidad de inferencia*
+necesita el lookahead para no perder su valor?" — y el residuo de ~10% que el
+exacto no recupera en B≥3 es la miopía de segundo orden real, mucho más chica
+de lo que creíamos.
 
 ## 3. Certificar el greedy a escala: la cota superior por información perfecta
 
@@ -77,11 +91,14 @@ publicable, y es terreno natural de discusión con Francisco.
 
 ## Qué llevar a la reunión
 
-El resultado más fuerte y nuevo es la ley de recuperación del lookahead (sección 2):
-sale de nuestro propio hallazgo del horizonte, es limpio y sugiere una pregunta
-teórica concreta —¿cuánto hueco cierra un lookahead de profundidad $d$ como función
-de $B$, y existe un $d(B)$ que garantice estar dentro de $\epsilon$ del óptimo? La
-descomposición (sección 1) es el soporte que dice dónde está el hueco. Y la cota
-(sección 3) es el problema abierto de certificación: el prototipo de hindsight está
-hecho y registro por qué necesitamos la versión con penalización, que es lo que
-convertiría todo esto en un resultado de certificación a escala.
+El resultado más fuerte cambió de signo y eso es lo que hay que contar: la
+"ley de recuperación del lookahead" era un artefacto de cableado (sección 2,
+errata), y la versión corregida es igual de interesante — lookahead de un paso
+bien cableado recupera ~90% del hueco a todo horizonte medido, así que la
+pregunta teórica se desplaza de la profundidad $d(B)$ a la interacción
+lookahead × calidad de inferencia. La descomposición en tres peldaños
+(sección 1) apunta la palanca barata a la propagación de marginales exactas.
+Y la cota (sección 3) sigue siendo el problema abierto de certificación: el
+prototipo de hindsight está hecho y registro por qué necesitamos la versión
+con penalización, que es lo que convertiría todo esto en un resultado de
+certificación a escala.

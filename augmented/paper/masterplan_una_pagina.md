@@ -15,7 +15,7 @@ La cota hindsight U_PI certifica poco porque el adversario que ve el futuro es d
 | n=6 B=2 G=3 | 0.981 | 0.631 | 0.683 |
 | n=5,6 B=3 | 0.93 | 0.76–0.82 | sin cambio |
 
-Dos lecturas. El greedy es mucho mejor de lo que se puede demostrar (real ~0.98, certificado ~0.7): el cuello de botella es la demostración, no el algoritmo. Y el apriete es un fenómeno de horizonte: la penalización con V̂ miope funciona en B=2 y se apaga en B=3 — el mismo patrón que la ley del lookahead (99% → 40% → 16%). La V̂ correcta debe mirar tan lejos como el horizonte.
+Dos lecturas. El greedy es mucho mejor de lo que se puede demostrar (real ~0.98, certificado ~0.7): el cuello de botella es la demostración, no el algoritmo. Y el apriete es un fenómeno de **holgura × horizonte**, no de horizonte solo: la penalización miope muerde cuando el presupuesto B·G está ceñido a n (incluso en B=3) y se apaga cuando sobra holgura. (La versión anterior lo atribuía al eco con la "ley del lookahead" 99→40→16; esa ley resultó artefacto del cableado de inferencia y está corregida — ver `lineas_research_francisco.md` §2, errata.)
 
 ## 3. El mapa con garantías
 
@@ -25,7 +25,7 @@ Figura `figures/certified_map.png` (n=5, G=3, prevalencia 0.25–0.65, 12 instan
 
 Tu mapa dice cuándo la información vale. Yo quiero caracterizar cuánto de ese valor se puede reclamar y certificar con cómputo finito — el gap entre valor de información y valor computable, como función de tus tres perillas. D3 es el certificado; D1 dice cuándo su inferencia es computable; D2 es el certificado aplicado al canal.
 
-(Si la conversación va a la industria: demo en vivo, 30 segundos. Una flota de 50 componentes, 10 corridas por lotes: el motor certifica 31 limpios sin un solo falso limpio y garantiza ≥ 78% del óptimo incalculable; el muestreo aleatorio con el mismo presupuesto logra 46%. `demo_fleet_certification.py`.)
+(Si la conversación va a la industria: demo en vivo, 30 segundos. Una flota de 50 componentes, re-cableada a inferencia exacta y selector muestral conjunto, configuración impresa en cabecera: en saturación B=10 el motor garantiza ≥ 81% del óptimo incalculable (aleatorio 46%); en escasez B=6 — donde la cota no colapsa — garantiza ≥ 71% (aleatorio 35%), con cero falsos limpios en la corrida ilustrativa (38/50 certificados). `demo_fleet_certification.py`.)
 
 ## 5. Tres preguntas para trabajar juntos
 
