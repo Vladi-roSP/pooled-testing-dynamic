@@ -281,6 +281,80 @@ def exact_greedy_myopic_expected_utility(p, u, B, G):
     return recurse(0, all_z, 0)
 
 
+def run_three_way_decomposition(n_values=(5, 6, 7), num_instances=30,
+                                B=3, G=3, base_seed=1000, verbose=True):
+    """Descomposicion del hueco greedy->optimo en TRES peldanos por instancia:
+
+        miopia        = OPT - exact_greedy      (elegir por recompensa inmediata,
+                                                 aun con scoring perfecto)
+        scoring puro  = exact_greedy - counting (producto de marginales EXACTAS
+                                                 vs conjunta exacta)
+        propagacion   = counting - greedy       (marginales exactas vs acarreo
+                                                 secuencial, mismo producto)
+
+    La tabla vieja de dos peldanos fundia scoring y propagacion en un solo
+    "costo de la independencia"; el peldano intermedio
+    (greedy_myopic_counting_expected_utility) los separa. Misma receta del
+    documento de referencia: p ~ U(0,1), u en {1,2,3}, B=G=3, sembrado.
+
+    Nota de honestidad: la escalera greedy <= counting <= exact NO es un
+    teorema por instancia (una politica miope con mejor scoring puede perder
+    en una instancia concreta; solo <= OPT esta garantizado). Se cuentan las
+    violaciones por instancia y se reportan junto con la atribucion
+    AGREGADA, que es el objeto de la tabla.
+
+    Devuelve {n: dict con fracciones, promedios y conteos de violacion}.
+    """
+    from augmented.greedy import (greedy_myopic_expected_utility,
+                                  greedy_myopic_counting_expected_utility)
+    from augmented.solver import solve_optimal_dapts
+
+    out = {}
+    for n in n_values:
+        tot_gap = tot_myo = tot_scoring = tot_prop = 0.0
+        viol_counting = viol_scoring = 0
+        for inst in range(num_instances):
+            rng = random.Random(base_seed + inst)
+            p = [rng.uniform(0.0, 1.0) for _ in range(n)]
+            u = [float(rng.choice([1, 2, 3])) for _ in range(n)]
+            g = greedy_myopic_expected_utility(p, u, B, G)
+            c = greedy_myopic_counting_expected_utility(p, u, B, G)
+            e = exact_greedy_myopic_expected_utility(p, u, B, G)
+            o, _ = solve_optimal_dapts(p, u, B, G)
+            # Teorema: toda politica factible esta acotada por el optimo.
+            assert g <= o + 1e-9 and c <= o + 1e-9 and e <= o + 1e-9, \
+                (n, inst, g, c, e, o)
+            if c < g - 1e-9:
+                viol_counting += 1
+            if e < c - 1e-9:
+                viol_scoring += 1
+            tot_gap += o - g
+            tot_myo += o - e
+            tot_scoring += e - c
+            tot_prop += c - g
+        out[n] = {
+            "gap_total": tot_gap / num_instances,
+            "miopia": tot_myo / num_instances,
+            "scoring_puro": tot_scoring / num_instances,
+            "propagacion": tot_prop / num_instances,
+            "frac_miopia": tot_myo / tot_gap if tot_gap > 0 else 0.0,
+            "frac_scoring": tot_scoring / tot_gap if tot_gap > 0 else 0.0,
+            "frac_propagacion": tot_prop / tot_gap if tot_gap > 0 else 0.0,
+            "viol_counting_lt_greedy": viol_counting,
+            "viol_exact_lt_counting": viol_scoring,
+            "num_instances": num_instances,
+        }
+        if verbose:
+            r = out[n]
+            print(f"n={n} ({num_instances} instancias): "
+                  f"miopia {r['frac_miopia']:.1%} del hueco, "
+                  f"scoring puro {r['frac_scoring']:.1%}, "
+                  f"propagacion {r['frac_propagacion']:.1%}  "
+                  f"[viol. escalera: counting<greedy {viol_counting}, "
+                  f"exact<counting {viol_scoring}]", flush=True)
+    return out
+
+
 def aggregate(rows):
     """Compact summary stats stratified by pool size."""
     by_size = {}
