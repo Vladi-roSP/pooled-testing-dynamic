@@ -21,8 +21,37 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from augmented.baselines import u_max, u_single
-from augmented.greedy import greedy_myopic_expected_utility
+from augmented.greedy import (greedy_myopic_expected_utility,
+                              greedy_myopic_simulate, EXACT_PMF_MAX_N)
 from augmented.pool_solvers import gurobi_best_pool, mosek_best_pool
+
+
+MC_NUM_SIMS = 200
+
+
+def exact_eu_feasible(n):
+    """Gate unico para las columnas EU: la recursion es exacta solo hasta
+    EXACT_PMF_MAX_N agentes (arriba, pesos Poisson-Binomial sesgados; se
+    reporta MC insesgado con SE en su lugar)."""
+    return n <= EXACT_PMF_MAX_N
+
+
+def _mc_policy_value(p, u, B, G, pool_selector, num_sims, seed):
+    """Media +- SE insesgadas del valor de la politica via simulate."""
+    vals = []
+    for s in range(num_sims):
+        rng = random.Random(seed + s)
+        z = 0
+        for i, pi in enumerate(p):
+            if rng.random() < pi:
+                z |= (1 << i)
+        _, _, val = greedy_myopic_simulate(p, u, B, G, z,
+                                           pool_selector=pool_selector)
+        vals.append(val)
+    mean = sum(vals) / num_sims
+    var = (sum((v - mean) ** 2 for v in vals) / (num_sims - 1)
+           if num_sims > 1 else 0.0)
+    return mean, (var / num_sims) ** 0.5
 
 
 # -------------------------------------------------------------------
@@ -49,11 +78,16 @@ def set_memory_limit_gb(limit_gb):
 # Core experiment
 # -------------------------------------------------------------------
 
-def run_single_instance(p, u, B, G, solver='gurobi', timeout_per_step=30):
+def run_single_instance(p, u, B, G, solver='gurobi', timeout_per_step=30,
+                        seed=0):
     """Run greedy with solver pool selection. Returns EU value only (no tree).
 
     This is memory-efficient: greedy_myopic_expected_utility only keeps
     the recursion stack in memory, no tree dicts.
+
+    Hasta EXACT_PMF_MAX_N agentes las columnas U_* son exactas (SE = None);
+    arriba de eso son medias MC sembradas con su SE — la recursion EU con
+    pesos Poisson-Binomial esta sesgada ahi y ya no se reporta.
     """
     n = len(p)
 
@@ -65,6 +99,7 @@ def run_single_instance(p, u, B, G, solver='gurobi', timeout_per_step=30):
         pool_fn = None  # default enumeration
 
     results = {}
+    results['estimator'] = 'exact' if exact_eu_feasible(n) else 'mc'
 
     # Upper/lower bounds (cheap)
     results['U_max'] = u_max(p, u)
@@ -72,19 +107,27 @@ def run_single_instance(p, u, B, G, solver='gurobi', timeout_per_step=30):
 
     # Solver-based greedy
     t0 = time.time()
-    results['U_greedy_solver'] = greedy_myopic_expected_utility(
-        p, u, B, G, pool_selector=pool_fn
-    )
+    if exact_eu_feasible(n):
+        results['U_greedy_solver'] = greedy_myopic_expected_utility(
+            p, u, B, G, pool_selector=pool_fn
+        )
+        results['U_greedy_solver_se'] = None
+    else:
+        mean, se = _mc_policy_value(p, u, B, G, pool_fn, MC_NUM_SIMS, seed)
+        results['U_greedy_solver'] = mean
+        results['U_greedy_solver_se'] = se
     results['time_solver'] = time.time() - t0
 
-    # Default greedy (enumeration) — only for small n where feasible
-    if n <= 20:
-        t0 = time.time()
+    # Default greedy (enumeration)
+    t0 = time.time()
+    if exact_eu_feasible(n):
         results['U_greedy_enum'] = greedy_myopic_expected_utility(p, u, B, G)
-        results['time_enum'] = time.time() - t0
+        results['U_greedy_enum_se'] = None
     else:
-        results['U_greedy_enum'] = None
-        results['time_enum'] = None
+        mean, se = _mc_policy_value(p, u, B, G, None, MC_NUM_SIMS, seed)
+        results['U_greedy_enum'] = mean
+        results['U_greedy_enum_se'] = se
+    results['time_enum'] = time.time() - t0
 
     return results
 
@@ -121,8 +164,9 @@ def run_experiments(n_values, B_values, G_values, n_instances=10,
 
     fieldnames = [
         'n', 'B', 'G', 'regime', 'instance', 'seed', 'solver',
-        'U_max', 'U_single', 'U_greedy_solver', 'U_greedy_enum',
-        'time_solver', 'time_enum', 'memory_mb',
+        'U_max', 'U_single', 'U_greedy_solver', 'U_greedy_solver_se',
+        'U_greedy_enum', 'U_greedy_enum_se',
+        'time_solver', 'time_enum', 'estimator', 'memory_mb',
     ]
 
     # Set memory limit if requested
@@ -161,7 +205,7 @@ def run_experiments(n_values, B_values, G_values, n_instances=10,
 
                             try:
                                 results = run_single_instance(
-                                    p, u, B, G, solver=solver
+                                    p, u, B, G, solver=solver, seed=seed
                                 )
                             except MemoryError:
                                 print(f"  MemoryError at n={n}, B={B}, "
@@ -169,8 +213,11 @@ def run_experiments(n_values, B_values, G_values, n_instances=10,
                                 results = {
                                     'U_max': None, 'U_single': None,
                                     'U_greedy_solver': None,
+                                    'U_greedy_solver_se': None,
                                     'U_greedy_enum': None,
+                                    'U_greedy_enum_se': None,
                                     'time_solver': None, 'time_enum': None,
+                                    'estimator': None,
                                 }
                                 gc.collect()
 
@@ -185,9 +232,12 @@ def run_experiments(n_values, B_values, G_values, n_instances=10,
                                 'U_max': results.get('U_max'),
                                 'U_single': results.get('U_single'),
                                 'U_greedy_solver': results.get('U_greedy_solver'),
+                                'U_greedy_solver_se': results.get('U_greedy_solver_se'),
                                 'U_greedy_enum': results.get('U_greedy_enum'),
+                                'U_greedy_enum_se': results.get('U_greedy_enum_se'),
                                 'time_solver': results.get('time_solver'),
                                 'time_enum': results.get('time_enum'),
+                                'estimator': results.get('estimator'),
                                 'memory_mb': f"{mem_mb:.1f}",
                             }
                             writer.writerow(row)

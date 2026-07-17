@@ -17,7 +17,8 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from augmented.baselines import u_max, u_single
-from augmented.greedy import greedy_myopic_expected_utility
+from augmented.greedy import (greedy_myopic_expected_utility,
+                              greedy_myopic_simulate, EXACT_PMF_MAX_N)
 from augmented.state_reward_greedy import greedy_myopic_beta_expected_utility
 from augmented.pool_solvers import mosek_best_pool
 
@@ -37,6 +38,32 @@ REGIMES = [
 ]
 
 TIMEOUT_SECONDS = 120.0
+MC_NUM_SIMS = 200
+
+
+def exact_eu_feasible(n):
+    """Gate unico para las columnas EU: la recursion es exacta solo hasta
+    EXACT_PMF_MAX_N agentes (arriba de eso los pesos de rama serian
+    Poisson-Binomial sesgados; ahi se reporta MC insesgado con SE)."""
+    return n <= EXACT_PMF_MAX_N
+
+
+def _mc_policy_value(p, u, B, G, pool_selector, num_sims, seed):
+    """Media +- SE insesgadas del valor de la politica via simulate."""
+    vals = []
+    for s in range(num_sims):
+        rng = random.Random(seed + s)
+        z = 0
+        for i, pi in enumerate(p):
+            if rng.random() < pi:
+                z |= (1 << i)
+        _, _, val = greedy_myopic_simulate(p, u, B, G, z,
+                                           pool_selector=pool_selector)
+        vals.append(val)
+    mean = sum(vals) / num_sims
+    var = (sum((v - mean) ** 2 for v in vals) / (num_sims - 1)
+           if num_sims > 1 else 0.0)
+    return mean, (var / num_sims) ** 0.5
 
 
 def _timestamped_csv_path(output_dir, prefix):
@@ -110,24 +137,61 @@ def _measure_baselines(p, u, B):
     }
 
 
-def _measure_greedy_mosek(p, u, B, G):
-    return _timed_call(
-        lambda: greedy_myopic_expected_utility(
-            p, u, B, G, pool_selector=mosek_best_pool)
-    )
+def _measure_greedy_mosek(p, u, B, G, seed=0):
+    """(valor, se, elapsed, error, timed_out). se=None en la rama exacta."""
+    if exact_eu_feasible(len(p)):
+        val, elapsed, error, timed_out = _timed_call(
+            lambda: greedy_myopic_expected_utility(
+                p, u, B, G, pool_selector=mosek_best_pool))
+        return val, None, elapsed, error, timed_out
+    result, elapsed, error, timed_out = _timed_call(
+        lambda: _mc_policy_value(p, u, B, G, mosek_best_pool,
+                                 MC_NUM_SIMS, seed))
+    if result is None:
+        return None, None, elapsed, error, timed_out
+    return result[0], result[1], elapsed, error, timed_out
 
 
-def _measure_greedy_enum(p, u, B, G):
-    if len(p) > 20:
-        return None, None, None, False
-    return _timed_call(lambda: greedy_myopic_expected_utility(p, u, B, G))
+def _measure_greedy_enum(p, u, B, G, seed=0):
+    """(valor, se, elapsed, error, timed_out). se=None en la rama exacta."""
+    if exact_eu_feasible(len(p)):
+        val, elapsed, error, timed_out = _timed_call(
+            lambda: greedy_myopic_expected_utility(p, u, B, G))
+        return val, None, elapsed, error, timed_out
+    result, elapsed, error, timed_out = _timed_call(
+        lambda: _mc_policy_value(p, u, B, G, None, MC_NUM_SIMS, seed))
+    if result is None:
+        return None, None, elapsed, error, timed_out
+    return result[0], result[1], elapsed, error, timed_out
 
 
-def _measure_beta_greedy(p, u, B, G, beta=1.0, info_metric='entropy'):
-    return _timed_call(
+def _measure_beta_greedy(p, u, B, G, beta=1.0, info_metric='entropy', seed=0):
+    """(valor, se, elapsed, error, timed_out). El gate interno de
+    greedy_myopic_beta_expected_utility decide exacto vs MC; se=None cuando
+    la rama fue exacta."""
+    result, elapsed, error, timed_out = _timed_call(
         lambda: greedy_myopic_beta_expected_utility(
-            p, u, B, G, beta=beta, info_metric=info_metric)
-    )
+            p, u, B, G, beta=beta, info_metric=info_metric,
+            seed=seed, return_se=True))
+    if result is None:
+        return None, None, elapsed, error, timed_out
+    mean, se = result
+    return mean, (se if se > 0.0 else None), elapsed, error, timed_out
+
+
+def _fill_metric(row, name, result, context):
+    """Vuelca (valor, se, elapsed, error, timed_out) en las columnas de la
+    metrica ``name`` y reporta timeout/errores."""
+    val, se, elapsed, error, timed_out = result
+    row[f"U_{name}"] = val
+    row[f"time_{name}"] = elapsed
+    se_key = f"U_{name}_se"
+    if se_key in row:
+        row[se_key] = se
+    if timed_out:
+        _warn_if_slow(f"U_{name}", elapsed, context)
+    if error:
+        print(f"  Error in U_{name} for {context}: {error}", flush=True)
 
 
 def _write_row(writer, handle, row):
@@ -154,9 +218,10 @@ def run_main_experiments(n_instances=50, output_dir='results',
     csv_path = _timestamped_csv_path(output_dir, "sprint3")
     fieldnames = [
         "config", "notes", "n", "B", "G", "regime", "instance", "seed",
-        "U_max", "U_single", "U_greedy_mosek", "time_greedy_mosek",
-        "U_greedy_enum", "time_greedy_enum", "U_beta_greedy",
-        "time_beta_greedy", "error",
+        "U_max", "U_single", "U_greedy_mosek", "U_greedy_mosek_se",
+        "time_greedy_mosek", "U_greedy_enum", "U_greedy_enum_se",
+        "time_greedy_enum", "U_beta_greedy", "U_beta_greedy_se",
+        "time_beta_greedy", "estimator", "error",
     ]
 
     total_runs = len(configs) * len(regimes) * n_instances
@@ -189,11 +254,15 @@ def run_main_experiments(n_instances=50, output_dir='results',
                         "U_max": None,
                         "U_single": None,
                         "U_greedy_mosek": None,
+                        "U_greedy_mosek_se": None,
                         "time_greedy_mosek": None,
                         "U_greedy_enum": None,
+                        "U_greedy_enum_se": None,
                         "time_greedy_enum": None,
                         "U_beta_greedy": None,
+                        "U_beta_greedy_se": None,
                         "time_beta_greedy": None,
+                        "estimator": "exact" if exact_eu_feasible(n) else "mc",
                         "error": None,
                     }
                     try:
@@ -201,33 +270,20 @@ def run_main_experiments(n_instances=50, output_dir='results',
                             n, p_range, (1.0, 10.0), inst_seed)
                         row.update(_measure_baselines(p, u, B))
 
-                        val, elapsed, error, timed_out = _measure_greedy_mosek(p, u, B, G)
-                        row["U_greedy_mosek"] = val
-                        row["time_greedy_mosek"] = elapsed
-                        if timed_out:
-                            _warn_if_slow("U_greedy_mosek", elapsed, context)
-                        if error:
-                            print(f"  Error in U_greedy_mosek for {context}: {error}",
-                                  flush=True)
-
-                        val, elapsed, error, timed_out = _measure_greedy_enum(p, u, B, G)
-                        row["U_greedy_enum"] = val
-                        row["time_greedy_enum"] = elapsed
-                        if timed_out:
-                            _warn_if_slow("U_greedy_enum", elapsed, context)
-                        if error:
-                            print(f"  Error in U_greedy_enum for {context}: {error}",
-                                  flush=True)
-
-                        val, elapsed, error, timed_out = _measure_beta_greedy(
-                            p, u, B, G, beta=1.0, info_metric='entropy')
-                        row["U_beta_greedy"] = val
-                        row["time_beta_greedy"] = elapsed
-                        if timed_out:
-                            _warn_if_slow("U_beta_greedy", elapsed, context)
-                        if error:
-                            print(f"  Error in U_beta_greedy for {context}: {error}",
-                                  flush=True)
+                        _fill_metric(row, "greedy_mosek",
+                                     _measure_greedy_mosek(p, u, B, G,
+                                                           seed=inst_seed),
+                                     context)
+                        _fill_metric(row, "greedy_enum",
+                                     _measure_greedy_enum(p, u, B, G,
+                                                          seed=inst_seed),
+                                     context)
+                        _fill_metric(row, "beta_greedy",
+                                     _measure_beta_greedy(
+                                         p, u, B, G, beta=1.0,
+                                         info_metric='entropy',
+                                         seed=inst_seed),
+                                     context)
                     except Exception as exc:
                         row["error"] = str(exc)
                         print(f"  Error in {context}: {exc}", flush=True)
@@ -246,8 +302,9 @@ def run_vip_experiments(output_dir='results', n_instances_v1=20,
     csv_path = _timestamped_csv_path(output_dir, "sprint3_vip")
     fieldnames = [
         "config", "n", "B", "G", "instance", "seed",
-        "U_max", "U_single", "U_greedy_mosek", "time_greedy_mosek",
-        "U_beta_greedy", "time_beta_greedy", "error",
+        "U_max", "U_single", "U_greedy_mosek", "U_greedy_mosek_se",
+        "time_greedy_mosek", "U_beta_greedy", "U_beta_greedy_se",
+        "time_beta_greedy", "estimator", "error",
     ]
     if configs is None:
         configs = [
@@ -279,9 +336,12 @@ def run_vip_experiments(output_dir='results', n_instances_v1=20,
                     "U_max": None,
                     "U_single": None,
                     "U_greedy_mosek": None,
+                    "U_greedy_mosek_se": None,
                     "time_greedy_mosek": None,
                     "U_beta_greedy": None,
+                    "U_beta_greedy_se": None,
                     "time_beta_greedy": None,
+                    "estimator": "exact" if exact_eu_feasible(n) else "mc",
                     "error": None,
                 }
                 try:
@@ -291,24 +351,15 @@ def run_vip_experiments(output_dir='results', n_instances_v1=20,
                     )
                     row.update(_measure_baselines(p, u, B))
 
-                    val, elapsed, error, timed_out = _measure_greedy_mosek(p, u, B, G)
-                    row["U_greedy_mosek"] = val
-                    row["time_greedy_mosek"] = elapsed
-                    if timed_out:
-                        _warn_if_slow("U_greedy_mosek", elapsed, context)
-                    if error:
-                        print(f"  Error in U_greedy_mosek for {context}: {error}",
-                              flush=True)
-
-                    val, elapsed, error, timed_out = _measure_beta_greedy(
-                        p, u, B, G, beta=1.0, info_metric='entropy')
-                    row["U_beta_greedy"] = val
-                    row["time_beta_greedy"] = elapsed
-                    if timed_out:
-                        _warn_if_slow("U_beta_greedy", elapsed, context)
-                    if error:
-                        print(f"  Error in U_beta_greedy for {context}: {error}",
-                              flush=True)
+                    _fill_metric(row, "greedy_mosek",
+                                 _measure_greedy_mosek(p, u, B, G,
+                                                       seed=inst_seed),
+                                 context)
+                    _fill_metric(row, "beta_greedy",
+                                 _measure_beta_greedy(p, u, B, G, beta=1.0,
+                                                      info_metric='entropy',
+                                                      seed=inst_seed),
+                                 context)
                 except Exception as exc:
                     row["error"] = str(exc)
                     print(f"  Error in {context}: {exc}", flush=True)
@@ -326,8 +377,9 @@ def run_utility_modulation(output_dir='results', n_instances=20, distributions=N
     csv_path = _timestamped_csv_path(output_dir, "sprint3_utility")
     fieldnames = [
         "utility_distribution", "n", "B", "G", "instance", "seed",
-        "U_max", "U_single", "U_greedy_mosek", "time_greedy_mosek",
-        "U_beta_greedy", "time_beta_greedy", "error",
+        "U_max", "U_single", "U_greedy_mosek", "U_greedy_mosek_se",
+        "time_greedy_mosek", "U_beta_greedy", "U_beta_greedy_se",
+        "time_beta_greedy", "estimator", "error",
     ]
     if distributions is None:
         distributions = ["uniform", "skewed", "extreme"]
@@ -358,9 +410,12 @@ def run_utility_modulation(output_dir='results', n_instances=20, distributions=N
                     "U_max": None,
                     "U_single": None,
                     "U_greedy_mosek": None,
+                    "U_greedy_mosek_se": None,
                     "time_greedy_mosek": None,
                     "U_beta_greedy": None,
+                    "U_beta_greedy_se": None,
                     "time_beta_greedy": None,
+                    "estimator": "exact" if exact_eu_feasible(n) else "mc",
                     "error": None,
                 }
                 try:
@@ -368,24 +423,15 @@ def run_utility_modulation(output_dir='results', n_instances=20, distributions=N
                         n, utility_distribution, inst_seed)
                     row.update(_measure_baselines(p, u, B))
 
-                    val, elapsed, error, timed_out = _measure_greedy_mosek(p, u, B, G)
-                    row["U_greedy_mosek"] = val
-                    row["time_greedy_mosek"] = elapsed
-                    if timed_out:
-                        _warn_if_slow("U_greedy_mosek", elapsed, context)
-                    if error:
-                        print(f"  Error in U_greedy_mosek for {context}: {error}",
-                              flush=True)
-
-                    val, elapsed, error, timed_out = _measure_beta_greedy(
-                        p, u, B, G, beta=1.0, info_metric='entropy')
-                    row["U_beta_greedy"] = val
-                    row["time_beta_greedy"] = elapsed
-                    if timed_out:
-                        _warn_if_slow("U_beta_greedy", elapsed, context)
-                    if error:
-                        print(f"  Error in U_beta_greedy for {context}: {error}",
-                              flush=True)
+                    _fill_metric(row, "greedy_mosek",
+                                 _measure_greedy_mosek(p, u, B, G,
+                                                       seed=inst_seed),
+                                 context)
+                    _fill_metric(row, "beta_greedy",
+                                 _measure_beta_greedy(p, u, B, G, beta=1.0,
+                                                      info_metric='entropy',
+                                                      seed=inst_seed),
+                                 context)
                 except Exception as exc:
                     row["error"] = str(exc)
                     print(f"  Error in {context}: {exc}", flush=True)
@@ -403,8 +449,8 @@ def run_large_G(output_dir='results', n_instances=20, g_values=None):
     csv_path = _timestamped_csv_path(output_dir, "sprint3_largeG")
     fieldnames = [
         "G", "n", "B", "instance", "seed",
-        "U_max", "U_single", "U_greedy_mosek", "time_greedy_mosek",
-        "gap", "error",
+        "U_max", "U_single", "U_greedy_mosek", "U_greedy_mosek_se",
+        "time_greedy_mosek", "estimator", "gap", "error",
     ]
     n, B = 20, 2
     if g_values is None:
@@ -432,7 +478,9 @@ def run_large_G(output_dir='results', n_instances=20, g_values=None):
                     "U_max": None,
                     "U_single": None,
                     "U_greedy_mosek": None,
+                    "U_greedy_mosek_se": None,
                     "time_greedy_mosek": None,
+                    "estimator": "exact" if exact_eu_feasible(n) else "mc",
                     "gap": None,
                     "error": None,
                 }
@@ -440,14 +488,10 @@ def run_large_G(output_dir='results', n_instances=20, g_values=None):
                     p, u = _generate_random_instance(n, (0.1, 0.3), (1.0, 10.0), inst_seed)
                     row.update(_measure_baselines(p, u, B))
 
-                    val, elapsed, error, timed_out = _measure_greedy_mosek(p, u, B, G)
-                    row["U_greedy_mosek"] = val
-                    row["time_greedy_mosek"] = elapsed
-                    if timed_out:
-                        _warn_if_slow("U_greedy_mosek", elapsed, context)
-                    if error:
-                        print(f"  Error in U_greedy_mosek for {context}: {error}",
-                              flush=True)
+                    _fill_metric(row, "greedy_mosek",
+                                 _measure_greedy_mosek(p, u, B, G,
+                                                       seed=inst_seed),
+                                 context)
                     if row["U_max"] and row["U_greedy_mosek"] is not None:
                         row["gap"] = (
                             (row["U_max"] - row["U_greedy_mosek"]) / row["U_max"]

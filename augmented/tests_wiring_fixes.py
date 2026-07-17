@@ -326,3 +326,16 @@ def test_beta_eu_large_n_reports_se_and_uses_enough_trials():
     assert 0.0 < se1 < 0.05 * m1           # honest SE, tight with 200 trials
     m3 = greedy_myopic_beta_expected_utility(p, u, 4, 3, beta=0.5, seed=11)
     assert m3 == m1                        # legacy scalar return by default
+
+
+# -------------------------------------------------------------------
+# Task 10: gates de los runners alineados a la frontera exacta
+# -------------------------------------------------------------------
+
+def test_experiment_gates_match_exact_pmf_frontier():
+    from augmented.greedy import EXACT_PMF_MAX_N
+    import augmented.sprint3_experiments as s3
+    import augmented.overnight_experiments as ov
+    assert EXACT_PMF_MAX_N == 18
+    assert s3.exact_eu_feasible(18) and not s3.exact_eu_feasible(19)
+    assert ov.exact_eu_feasible(18) and not ov.exact_eu_feasible(19)
