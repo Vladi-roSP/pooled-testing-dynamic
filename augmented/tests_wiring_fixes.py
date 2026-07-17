@@ -134,3 +134,20 @@ def test_sample_best_pool_picks_true_argmax_on_small_case():
     # True best pool is {0,2}: P(clean)=0.85, gain 2 -> score 1.70;
     # any pool containing 1 has P(clean)<=0.15.
     assert pool == 0b101, bin(pool)
+
+
+# -------------------------------------------------------------------
+# Task 6: pesos de rama exactos en hybrid_solver (invariante K=B)
+# -------------------------------------------------------------------
+
+def test_hybrid_kB_equals_greedy_on_overlap_heavy_instances():
+    from augmented.hybrid_solver import hybrid_greedy_bruteforce
+    from augmented.greedy import greedy_myopic_expected_utility
+    for seed in range(10):
+        rng = random.Random(400 + seed)
+        n = 5 if seed % 2 else 6
+        p = [rng.uniform(0.2, 0.7) for _ in range(n)]  # high p -> overlap-rich
+        u = [rng.uniform(1.0, 5.0) for _ in range(n)]
+        g = greedy_myopic_expected_utility(p, u, 3, 3)
+        _, h = hybrid_greedy_bruteforce(p, u, 3, 3, greedy_steps=3)  # K=B
+        assert abs(g - h) < 1e-9, (seed, g, h)

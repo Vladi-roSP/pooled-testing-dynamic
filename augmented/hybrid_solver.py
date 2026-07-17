@@ -19,7 +19,8 @@ from augmented.core import (
 from augmented.bayesian import (
     bayesian_update_single_test, _poisson_binomial_pmf,
 )
-from augmented.greedy import _myopic_best_pool, greedy_myopic_expected_utility
+from augmented.greedy import (_myopic_best_pool, greedy_myopic_expected_utility,
+                              _branch_pmf)
 from augmented.solver import solve_optimal_dapts
 from augmented.tree_extractor import extract_tree
 from augmented.baselines import u_max
@@ -348,7 +349,7 @@ def _full_greedy_tree(p, u, B, G, n, greedy_score_fn):
             }, utility
 
         pool_indices = indices_from_mask(pool, n)
-        pmf = _poisson_binomial_pmf([current_p[i] for i in pool_indices])
+        pmf = _branch_pmf(p, history, current_p, pool, pool_indices, n)
 
         children = {}
         ev = 0.0
@@ -433,7 +434,7 @@ def _hybrid_recurse(p, u, B, G, n, K, greedy_score_fn,
         }, utility
 
     pool_indices = indices_from_mask(pool, n)
-    pmf = _poisson_binomial_pmf([current_p[i] for i in pool_indices])
+    pmf = _branch_pmf(p, history, current_p, pool, pool_indices, n)
 
     children = {}
     ev = 0.0
@@ -524,7 +525,7 @@ def _dp_phase(p, u, G, n, current_p, cleared_mask, step,
     # If too many active agents for DP, fall back to continued greedy
     if n_active > 14:
         return _greedy_fallback(
-            u, G, n, current_p, cleared_mask, step,
+            p, u, G, n, current_p, cleared_mask, step,
             history, remaining_budget, greedy_score_fn
         )
 
@@ -558,9 +559,12 @@ def _dp_phase(p, u, G, n, current_p, cleared_mask, step,
     return sub_tree, total_eu
 
 
-def _greedy_fallback(u, G, n, current_p, cleared_mask, step,
+def _greedy_fallback(p, u, G, n, current_p, cleared_mask, step,
                       history, remaining_budget, greedy_score_fn):
-    """Fall back to greedy when DP is infeasible (n_active > 14)."""
+    """Fall back to greedy when DP is infeasible (n_active > 14).
+
+    ``p`` is the ORIGINAL prior (it weights the exact branch pmf together
+    with the full history); ``current_p`` are the carried marginals."""
     def _recurse(cp, cm, s, h, rb):
         if rb == 0:
             utility = sum(u[i] for i in indices_from_mask(cm, n))
@@ -592,7 +596,7 @@ def _greedy_fallback(u, G, n, current_p, cleared_mask, step,
             }, utility
 
         pool_indices = indices_from_mask(pool, n)
-        pmf = _poisson_binomial_pmf([cp[i] for i in pool_indices])
+        pmf = _branch_pmf(p, h, cp, pool, pool_indices, n)
 
         children = {}
         ev = 0.0
