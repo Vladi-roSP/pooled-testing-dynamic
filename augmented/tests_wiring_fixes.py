@@ -270,3 +270,59 @@ def test_semi_utility_counting_mode_no_crash():
         u = [rng.uniform(1.0, 5.0) for _ in range(5)]
         greedy_myopic_semi_expected_utility(p, u, 3, 3, alpha=0.3,
                                             update_method="counting")  # must not raise
+
+
+# -------------------------------------------------------------------
+# Task 9: state_reward_greedy — rama exacta hasta n=18, MC honesto arriba
+# -------------------------------------------------------------------
+
+def _bruteforce_beta(p, u, B, G, beta, info_metric):
+    """Exact E[utility] of the beta-reward greedy via profile enumeration."""
+    from augmented.state_reward_greedy import greedy_myopic_beta_simulate
+    n = len(p)
+    total = 0.0
+    for z in range(1 << n):
+        w = 1.0
+        for i in range(n):
+            w *= p[i] if (z >> i & 1) else (1.0 - p[i])
+        if w == 0.0:
+            continue
+        _, _, val = greedy_myopic_beta_simulate(p, u, B, G, z, beta,
+                                                info_metric)
+        total += w * val
+    return total
+
+
+def test_beta_eu_exact_matches_bruteforce_small_n():
+    from augmented.state_reward_greedy import greedy_myopic_beta_expected_utility
+    from augmented.greedy import greedy_myopic_expected_utility
+    for seed in range(6):
+        rng = random.Random(750 + seed)
+        n = 5 if seed % 2 else 6
+        p = [rng.uniform(0.2, 0.7) for _ in range(n)]  # overlap-heavy
+        u = [rng.uniform(1.0, 5.0) for _ in range(n)]
+        for beta in (0.0, 0.5):
+            eu = greedy_myopic_beta_expected_utility(p, u, 3, 3, beta=beta)
+            bf = _bruteforce_beta(p, u, 3, 3, beta, 'entropy')
+            assert abs(eu - bf) < 1e-9, (seed, beta, eu, bf)
+        # beta=0 must ALSO equal the standard greedy EU (legacy invariant,
+        # now to 1e-9 on overlap-heavy instances)
+        g = greedy_myopic_expected_utility(p, u, 3, 3)
+        eu0 = greedy_myopic_beta_expected_utility(p, u, 3, 3, beta=0.0)
+        assert abs(g - eu0) < 1e-9, (seed, g, eu0)
+
+
+def test_beta_eu_large_n_reports_se_and_uses_enough_trials():
+    from augmented.state_reward_greedy import greedy_myopic_beta_expected_utility
+    rng = random.Random(910)
+    n = 20
+    p = [rng.uniform(0.05, 0.4) for _ in range(n)]
+    u = [rng.uniform(1.0, 5.0) for _ in range(n)]
+    m1, se1 = greedy_myopic_beta_expected_utility(p, u, 4, 3, beta=0.5,
+                                                  return_se=True, seed=11)
+    m2, se2 = greedy_myopic_beta_expected_utility(p, u, 4, 3, beta=0.5,
+                                                  return_se=True, seed=11)
+    assert (m1, se1) == (m2, se2)          # seeded reproducibility
+    assert 0.0 < se1 < 0.05 * m1           # honest SE, tight with 200 trials
+    m3 = greedy_myopic_beta_expected_utility(p, u, 4, 3, beta=0.5, seed=11)
+    assert m3 == m1                        # legacy scalar return by default

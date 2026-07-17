@@ -17,11 +17,10 @@ from augmented.core import (all_pools_from_mask, compute_active_mask,
                             indices_from_mask, mask_str, test_result)
 from augmented.bayesian import bayesian_update_single_test, _poisson_binomial_pmf
 from augmented.baselines import u_max
+from augmented.greedy import EXACT_PMF_MAX_N, _branch_pmf
 
 
 _EXACT_POOL_LIMIT = 14
-_EXACT_EU_LIMIT = 12
-_LARGE_N_MC_TRIALS = 4
 _HEURISTIC_SHORTLIST = 8
 _EXACT_POOL_ENUM_LIMIT = 50000
 
@@ -175,22 +174,38 @@ def greedy_myopic_beta_simulate(p, u, B, G, z_mask, beta, info_metric='entropy')
     return history, cleared_mask, utility
 
 
-def greedy_myopic_beta_expected_utility(p, u, B, G, beta, info_metric='entropy'):
-    """Expected utility of myopic beta-reward greedy."""
+def greedy_myopic_beta_expected_utility(p, u, B, G, beta, info_metric='entropy',
+                                        num_trials=200, seed=0,
+                                        return_se=False):
+    """Expected utility of myopic beta-reward greedy.
+
+    Exact (branch pmf sobre perfiles consistentes) hasta
+    EXACT_PMF_MAX_N agentes activos; arriba de eso, media Monte Carlo con
+    ``num_trials`` simulaciones sembradas con ``seed``.
+
+    return_se=True devuelve (media, error estandar); el SE es 0.0 en la rama
+    exacta. Por omision devuelve solo la media (compatibilidad hacia atras).
+    """
     n = len(p)
 
     active_mask, _ = compute_active_mask(p, 0, n)
-    if len(indices_from_mask(active_mask, n)) > _EXACT_EU_LIMIT:
-        rng = np.random.default_rng(0)
-        total = 0.0
-        for _ in range(_LARGE_N_MC_TRIALS):
+    if len(indices_from_mask(active_mask, n)) > EXACT_PMF_MAX_N:
+        rng = np.random.default_rng(seed)
+        vals = []
+        for _ in range(num_trials):
             z_mask = _draw_z_mask_from_prior(rng, p)
             _, _, utility = greedy_myopic_beta_simulate(
                 p, u, B, G, z_mask, beta, info_metric)
-            total += utility
-        return total / _LARGE_N_MC_TRIALS
+            vals.append(utility)
+        mean = sum(vals) / num_trials
+        var = (sum((v - mean) ** 2 for v in vals) / (num_trials - 1)
+               if num_trials > 1 else 0.0)
+        se = (var / num_trials) ** 0.5
+        return (mean, se) if return_se else mean
 
-    def recurse(current_p, b, cleared_mask):
+    prior = list(p)
+
+    def recurse(current_p, history, b, cleared_mask):
         if b == 0:
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
@@ -199,7 +214,7 @@ def greedy_myopic_beta_expected_utility(p, u, B, G, beta, info_metric='entropy')
             return sum(u[i] for i in indices_from_mask(cleared_mask, n))
 
         pool_idx = indices_from_mask(pool, n)
-        pmf = _poisson_binomial_pmf([current_p[i] for i in pool_idx])
+        pmf = _branch_pmf(prior, history, current_p, pool, pool_idx, n)
 
         ev = 0.0
         for r in range(len(pool_idx) + 1):
@@ -207,10 +222,12 @@ def greedy_myopic_beta_expected_utility(p, u, B, G, beta, info_metric='entropy')
                 continue
             new_p = bayesian_update_single_test(current_p, pool, r, n)
             new_cleared = cleared_mask | pool if r == 0 else cleared_mask
-            ev += pmf[r] * recurse(new_p, b - 1, new_cleared)
+            new_history = history + ((pool, r),)
+            ev += pmf[r] * recurse(new_p, new_history, b - 1, new_cleared)
         return ev
 
-    return recurse(list(p), B, 0)
+    val = recurse(list(p), (), B, 0)
+    return (val, 0.0) if return_se else val
 
 
 def _vip_scenario():
